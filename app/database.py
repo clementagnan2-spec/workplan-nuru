@@ -79,6 +79,30 @@ CREATE TABLE IF NOT EXISTS procurements (
     validation               TEXT,
     commentaires             TEXT
 );
+
+CREATE TABLE IF NOT EXISTS activity_codes (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    code    TEXT UNIQUE NOT NULL,
+    label   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    code    TEXT UNIQUE NOT NULL,
+    label   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS budget_lines (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name    TEXT UNIQUE NOT NULL,
+    label   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS charge_codes (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    code    TEXT UNIQUE NOT NULL,
+    label   TEXT
+);
 """
 
 
@@ -109,6 +133,7 @@ def connect(db_path: str = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)
     _seed_countries(conn)
+    _seed_referentials(conn)
     conn.commit()
     return conn
 
@@ -118,6 +143,75 @@ def _seed_countries(conn: sqlite3.Connection):
         conn.execute(
             "INSERT OR IGNORE INTO countries(name) VALUES (?)", (name,)
         )
+
+
+# ------------------------------------------------------------- référentiels
+# Listes de valeurs modifiables par l'utilisateur (menu "Référentiels") :
+# codes d'activité, catégories, lignes budgétaires (bailleurs), codes de charge.
+REFERENTIAL_TABLES = {
+    "activity_codes": "code",
+    "categories": "code",
+    "budget_lines": "name",
+    "charge_codes": "code",
+}
+
+_DEFAULT_REFERENTIALS = {
+    "categories": [
+        ("P", "Programme"),
+        ("I", "Sensibilisation"),
+        ("A", "Admin"),
+        ("C", "Collecte"),
+    ],
+    "budget_lines": [
+        ("NI/HCT", "NI/HCT"),
+        ("TIFR-USAID", "TIFR-USAID"),
+        ("FTIT", "FTIT"),
+    ],
+}
+
+
+def _seed_referentials(conn: sqlite3.Connection):
+    for table, items in _DEFAULT_REFERENTIALS.items():
+        key = REFERENTIAL_TABLES[table]
+        for value, label in items:
+            conn.execute(
+                f"INSERT OR IGNORE INTO {table} ({key}, label) VALUES (?, ?)",
+                (value, label),
+            )
+
+
+def list_referential(conn, table: str):
+    key = REFERENTIAL_TABLES[table]
+    return conn.execute(f"SELECT * FROM {table} ORDER BY {key}").fetchall()
+
+
+def referential_values(conn, table: str):
+    """Liste simple des codes/noms (pour peupler les listes déroulantes)."""
+    key = REFERENTIAL_TABLES[table]
+    rows = conn.execute(f"SELECT {key} FROM {table} ORDER BY {key}").fetchall()
+    return [r[0] for r in rows]
+
+
+def add_referential(conn, table: str, value: str, label: str = None) -> int:
+    key = REFERENTIAL_TABLES[table]
+    cur = conn.execute(
+        f"INSERT INTO {table} ({key}, label) VALUES (?, ?)", (value, label)
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_referential(conn, table: str, item_id: int, value: str, label: str = None):
+    key = REFERENTIAL_TABLES[table]
+    conn.execute(
+        f"UPDATE {table} SET {key} = ?, label = ? WHERE id = ?", (value, label, item_id)
+    )
+    conn.commit()
+
+
+def delete_referential(conn, table: str, item_id: int):
+    conn.execute(f"DELETE FROM {table} WHERE id = ?", (item_id,))
+    conn.commit()
 
 
 # ---------------------------------------------------------------- countries

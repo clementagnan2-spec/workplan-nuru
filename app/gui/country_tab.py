@@ -7,59 +7,71 @@ import datetime
 from .. import database as db
 from .dialogs import FormDialog, ask_yes_no, show_error
 
-CATEGORY_CHOICES = ["P", "I", "A", "C"]
+# Ces listes sont des repli si les référentiels sont vides ; les valeurs
+# réelles proposées dans les formulaires viennent de db.referential_values()
+# (menu Rapports > ... non, menu "Référentiels"), rechargées à chaque
+# ouverture de formulaire.
 STATUT_CHOICES = ["En cours", "Livré", "Annulé", "En attente"]
 TYPE_PROC_CHOICES = ["National", "International"]
 
-ACTIVITY_FORM_FIELDS = [
-    ("phase", "Phase", "text", None),
-    ("code", "Code (ex: A1XX)", "text", None),
-    ("task", "Tâche / Activité", "text", None),
-    ("assigned_to", "Assigné à", "text", None),
-    ("progress", "Avancement (%)", "percent", None),
-    ("start_date", "Date début", "date", None),
-    ("end_date", "Date fin", "date", None),
-    ("nb_pieces", "Nb pièces", "float", None),
-    ("category", "Catégorie (P/I/A/C)", "choice", CATEGORY_CHOICES),
-    ("cost_ni_hct", "Coût NI/HCT", "float", None),
-    ("cost_tifr_usaid", "Coût TIFR-USAID", "float", None),
-    ("cost_ftit", "Coût FTIT", "float", None),
-    ("budget_ni_hct", "Budget NI/HCT", "float", None),
-    ("budget_tifr_usaid", "Budget TIFR-USAID", "float", None),
-    ("budget_ftit", "Budget FTIT", "float", None),
-    ("comment", "Commentaire", "multiline", None),
-]
 
-PROCUREMENT_FORM_FIELDS = [
-    ("dossier_workplan", "Code activité (workplan)", "text", None),
-    ("n_pr", "N° PR", "text", None),
-    ("n_rfq", "N° RFQ", "text", None),
-    ("n_bc", "N° BC", "text", None),
-    ("date_bc", "Date BC", "date", None),
-    ("n_proforma", "N° Proforma", "text", None),
-    ("demandeur", "Demandeur", "text", None),
-    ("designation", "Désignation", "text", None),
-    ("fournisseur", "Fournisseur", "text", None),
-    ("date_fournisseur", "Date fournisseur", "date", None),
-    ("montant", "Montant", "float", None),
-    ("categorie", "Catégorie (P/I/A/C)", "choice", CATEGORY_CHOICES),
-    ("lieu_livraison", "Lieu de livraison", "text", None),
-    ("date_livraison_prevue", "Date livraison prévue", "date", None),
-    ("statut_bc", "Statut du BC", "choice", STATUT_CHOICES),
-    ("type_procurement", "Type (National/Intl)", "choice", TYPE_PROC_CHOICES),
-    ("project", "Projet", "text", None),
-    ("charge_code", "Charge code", "text", None),
-    ("code", "Code", "text", None),
-    ("bon_livraison", "Bon de livraison", "text", None),
-    ("facture_definitive", "Facture définitive", "text", None),
-    ("date_reception_facture", "Date réception facture", "date", None),
-    ("rib", "RIB", "text", None),
-    ("banque", "Banque du fournisseur", "text", None),
-    ("mode_paiement", "Mode de paiement", "text", None),
-    ("date_paiement", "Date de paiement", "date", None),
-    ("validation", "Validation / Autorisation", "text", None),
-    ("commentaires", "Commentaires", "multiline", None),
-]
+def _activity_form_fields(conn):
+    categories = db.referential_values(conn, "categories") or ["P", "I", "A", "C"]
+    activity_codes = db.referential_values(conn, "activity_codes")
+    return [
+        ("phase", "Phase", "text", None),
+        ("code", "Code activité", "choice", activity_codes),
+        ("task", "Tâche / Activité", "text", None),
+        ("assigned_to", "Assigné à", "text", None),
+        ("progress", "Avancement (%)", "percent", None),
+        ("start_date", "Date début", "date", None),
+        ("end_date", "Date fin", "date", None),
+        ("nb_pieces", "Nb pièces", "float", None),
+        ("category", "Catégorie", "choice", categories),
+        ("cost_ni_hct", "Coût NI/HCT", "float", None),
+        ("cost_tifr_usaid", "Coût TIFR-USAID", "float", None),
+        ("cost_ftit", "Coût FTIT", "float", None),
+        ("budget_ni_hct", "Budget NI/HCT", "float", None),
+        ("budget_tifr_usaid", "Budget TIFR-USAID", "float", None),
+        ("budget_ftit", "Budget FTIT", "float", None),
+        ("comment", "Commentaire", "multiline", None),
+    ]
+
+
+def _procurement_form_fields(conn):
+    categories = db.referential_values(conn, "categories") or ["P", "I", "A", "C"]
+    charge_codes = db.referential_values(conn, "charge_codes")
+    activity_codes = db.referential_values(conn, "activity_codes")
+    return [
+        ("dossier_workplan", "Code activité (workplan)", "choice", activity_codes),
+        ("n_pr", "N° PR", "text", None),
+        ("n_rfq", "N° RFQ", "text", None),
+        ("n_bc", "N° BC", "text", None),
+        ("date_bc", "Date BC", "date", None),
+        ("n_proforma", "N° Proforma", "text", None),
+        ("demandeur", "Demandeur", "text", None),
+        ("designation", "Désignation", "text", None),
+        ("fournisseur", "Fournisseur", "text", None),
+        ("date_fournisseur", "Date fournisseur", "date", None),
+        ("montant", "Montant", "float", None),
+        ("categorie", "Catégorie", "choice", categories),
+        ("lieu_livraison", "Lieu de livraison", "text", None),
+        ("date_livraison_prevue", "Date livraison prévue", "date", None),
+        ("statut_bc", "Statut du BC", "choice", STATUT_CHOICES),
+        ("type_procurement", "Type (National/Intl)", "choice", TYPE_PROC_CHOICES),
+        ("project", "Projet", "text", None),
+        ("charge_code", "Code de charge", "choice", charge_codes),
+        ("code", "Code", "text", None),
+        ("bon_livraison", "Bon de livraison", "text", None),
+        ("facture_definitive", "Facture définitive", "text", None),
+        ("date_reception_facture", "Date réception facture", "date", None),
+        ("rib", "RIB", "text", None),
+        ("banque", "Banque du fournisseur", "text", None),
+        ("mode_paiement", "Mode de paiement", "text", None),
+        ("date_paiement", "Date de paiement", "date", None),
+        ("validation", "Validation / Autorisation", "text", None),
+        ("commentaires", "Commentaires", "multiline", None),
+    ]
 
 
 def _fmt_money(v):
@@ -146,7 +158,7 @@ class CountryTab(ttk.Frame):
         return int(sel[0])
 
     def _add_activity(self):
-        dlg = FormDialog(self, "Ajouter une activité", ACTIVITY_FORM_FIELDS)
+        dlg = FormDialog(self, "Ajouter une activité", _activity_form_fields(self.conn))
         if dlg.result is None:
             return
         self._save_activity(None, dlg.result)
@@ -160,7 +172,7 @@ class CountryTab(ttk.Frame):
         if row["phase_id"]:
             phase = self.conn.execute("SELECT name FROM phases WHERE id = ?", (row["phase_id"],)).fetchone()
             initial["phase"] = phase["name"] if phase else ""
-        dlg = FormDialog(self, "Modifier l'activité", ACTIVITY_FORM_FIELDS, initial)
+        dlg = FormDialog(self, "Modifier l'activité", _activity_form_fields(self.conn), initial)
         if dlg.result is None:
             return
         self._save_activity(act_id, dlg.result)
@@ -278,7 +290,7 @@ class CountryTab(ttk.Frame):
         return int(sel[0])
 
     def _add_procurement(self):
-        dlg = FormDialog(self, "Ajouter un achat", PROCUREMENT_FORM_FIELDS)
+        dlg = FormDialog(self, "Ajouter un achat", _procurement_form_fields(self.conn))
         if dlg.result is None:
             return
         try:
@@ -293,7 +305,7 @@ class CountryTab(ttk.Frame):
         if proc_id is None:
             return
         row = db.get_procurement(self.conn, proc_id)
-        dlg = FormDialog(self, "Modifier l'achat", PROCUREMENT_FORM_FIELDS, dict(row))
+        dlg = FormDialog(self, "Modifier l'achat", _procurement_form_fields(self.conn), dict(row))
         if dlg.result is None:
             return
         try:

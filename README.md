@@ -16,6 +16,13 @@ projets multi-pays (Togo, Bénin, Niger, Ghana), à partir du modèle de fichier
   - le **planning** des activités (phase, code, tâche, avancement, dates, budget par bailleur NI/HCT, TIFR-USAID, FTIT) avec ajout / modification / suppression,
   - un **diagramme de Gantt** simple généré automatiquement à partir des dates,
   - le **suivi des achats** (PR, RFQ, Bon de commande, fournisseur, statut, paiement...).
+- Un menu **Référentiels** pour créer/modifier/supprimer les listes utilisées dans les formulaires :
+  - **Codes d'activité** (ex : A1XX, A2XX...)
+  - **Catégories** (Programme, Sensibilisation, Admin, Collecte)
+  - **Budget (bailleurs)** (NI/HCT, TIFR-USAID, FTIT)
+  - **Codes de charge**
+
+  Ces listes alimentent automatiquement les menus déroulants des formulaires d'activité et d'achat (vous pouvez aussi taper une nouvelle valeur directement dans le formulaire).
 - **Import** d'un classeur Excel existant (feuilles `WORKPLAN <PAYS>` et `procurement <PAYS>`).
 - **Export** de toutes les données vers un nouveau classeur Excel.
 - Les données sont stockées **localement** dans une base SQLite (aucune connexion internet requise), dans :

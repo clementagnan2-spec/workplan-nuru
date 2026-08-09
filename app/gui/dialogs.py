@@ -46,7 +46,10 @@ class FormDialog(tk.Toplevel):
 
             if ftype == "choice":
                 var = tk.StringVar(value=str(value) if value is not None else "")
-                widget = ttk.Combobox(inner, textvariable=var, values=options, width=32, state="readonly")
+                # éditable : l'utilisateur peut choisir dans la liste OU taper une
+                # nouvelle valeur (les référentiels s'enrichissent depuis le menu
+                # "Référentiels", mais on ne bloque pas la saisie ici pour autant)
+                widget = ttk.Combobox(inner, textvariable=var, values=options, width=32, state="normal")
             elif ftype == "multiline":
                 widget = tk.Text(inner, width=34, height=3)
                 widget.insert("1.0", "" if value is None else str(value))
