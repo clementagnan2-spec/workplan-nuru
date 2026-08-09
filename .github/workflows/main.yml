@@ -1,0 +1,48 @@
+name: Build Windows .exe
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compiler le .exe avec PyInstaller
+        run: |
+          pyinstaller --noconfirm --onefile --windowed `
+            --name "NuruWorkplanManager" `
+            --add-data "app;app" `
+            run_app.py
+
+      - name: Publier l'exécutable (artifact de build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: NuruWorkplanManager-windows
+          path: dist/NuruWorkplanManager.exe
+
+      - name: Créer une release GitHub (si un tag vX.Y.Z est poussé)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/NuruWorkplanManager.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
