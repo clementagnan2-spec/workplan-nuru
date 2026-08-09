@@ -284,3 +284,110 @@ def country_totals(conn, country_id: int) -> dict:
     )
     totals["solde"] = totals["budget_total"] - totals["cost_total"]
     return totals
+
+
+# ---------------------------------------------------------------- rapports
+CATEGORY_LABELS = {
+    "P": "Programme (P)",
+    "I": "Sensibilisation (I)",
+    "A": "Admin (A)",
+    "C": "Collecte (C)",
+}
+
+
+def activities_by_category(conn, country_id: int = None):
+    """Rapport activités regroupées par catégorie (P/I/A/C), avec le
+    nombre d'activités, le coût total et le budget total par pays."""
+    sql = (
+        "SELECT c.name AS country_name, "
+        "COALESCE(NULLIF(TRIM(a.category), ''), '(sans catégorie)') AS category, "
+        "COUNT(*) AS n_activites, "
+        "COALESCE(SUM(a.cost_ni_hct + a.cost_tifr_usaid + a.cost_ftit), 0) AS cost_total, "
+        "COALESCE(SUM(a.budget_ni_hct + a.budget_tifr_usaid + a.budget_ftit), 0) AS budget_total "
+        "FROM activities a JOIN countries c ON c.id = a.country_id "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE a.country_id = ? "
+        params = (country_id,)
+    sql += "GROUP BY c.name, category ORDER BY c.name, category"
+    rows = conn.execute(sql, params).fetchall()
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["category_label"] = CATEGORY_LABELS.get(d["category"], d["category"])
+        d["solde"] = d["budget_total"] - d["cost_total"]
+        result.append(d)
+    return result
+
+
+def list_all_activities(conn, country_id: int = None):
+    """Toutes les activités, toutes régions confondues (ou d'un seul pays),
+    avec le nom du pays et de la phase pour les rapports."""
+    sql = (
+        "SELECT a.*, c.name AS country_name, p.name AS phase_name "
+        "FROM activities a "
+        "JOIN countries c ON c.id = a.country_id "
+        "LEFT JOIN phases p ON p.id = a.phase_id "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE a.country_id = ? "
+        params = (country_id,)
+    sql += "ORDER BY c.name, p.position, a.start_date, a.id"
+    return conn.execute(sql, params).fetchall()
+
+
+DONOR_LABELS = [("ni_hct", "NI/HCT"), ("tifr_usaid", "TIFR-USAID"), ("ftit", "FTIT")]
+
+
+def budget_by_donor(conn, country_id: int = None):
+    """Rapport budget : une ligne par pays x bailleur, avec coût, budget
+    et solde. Si country_id est fourni, un seul pays est renvoyé."""
+    countries = (
+        [get_country(conn, country_id)] if country_id is not None
+        else list_countries(conn)
+    )
+    rows = []
+    for country in countries:
+        totals = country_totals(conn, country["id"])
+        for key, label in DONOR_LABELS:
+            cost = totals[f"cost_{key}"]
+            budget = totals[f"budget_{key}"]
+            rows.append({
+                "country": country["name"],
+                "donor": label,
+                "cost": cost,
+                "budget": budget,
+                "solde": budget - cost,
+            })
+        rows.append({
+            "country": country["name"],
+            "donor": "TOTAL",
+            "cost": totals["cost_total"],
+            "budget": totals["budget_total"],
+            "solde": totals["solde"],
+        })
+    return rows
+
+
+def get_country(conn, country_id: int):
+    return conn.execute("SELECT * FROM countries WHERE id = ?", (country_id,)).fetchone()
+
+
+def procurement_by_charge_code(conn, country_id: int = None):
+    """Rapport achats regroupés par code de charge (charge_code), avec le
+    nombre d'achats et le montant total par pays."""
+    sql = (
+        "SELECT c.name AS country_name, "
+        "COALESCE(NULLIF(TRIM(pr.charge_code), ''), '(sans code de charge)') AS charge_code, "
+        "COUNT(*) AS n_achats, COALESCE(SUM(pr.montant), 0) AS montant_total "
+        "FROM procurements pr JOIN countries c ON c.id = pr.country_id "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE pr.country_id = ? "
+        params = (country_id,)
+    sql += "GROUP BY c.name, charge_code ORDER BY c.name, charge_code"
+    return conn.execute(sql, params).fetchall()

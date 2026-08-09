@@ -8,6 +8,10 @@ projets multi-pays (Togo, Bénin, Niger, Ghana), à partir du modèle de fichier
 ## Fonctionnalités
 
 - Un onglet **Consolidation** avec les totaux coûts / budget / solde de tous les pays.
+- Un menu **Rapports** avec 3 vues transversales, filtrables par pays, exportables en Excel :
+  - **Par catégorie** : nombre d'activités, coût total, budget total et solde regroupés par catégorie (Programme, Sensibilisation, Admin, Collecte) et par pays.
+  - **Par budget** : coût / budget / solde par bailleur (NI/HCT, TIFR-USAID, FTIT) et par pays.
+  - **Par code de charge** : montant total des achats regroupés par code de charge.
 - Un onglet par **pays** avec :
   - le **planning** des activités (phase, code, tâche, avancement, dates, budget par bailleur NI/HCT, TIFR-USAID, FTIT) avec ajout / modification / suppression,
   - un **diagramme de Gantt** simple généré automatiquement à partir des dates,

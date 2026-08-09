@@ -10,6 +10,7 @@ from .. import excel_import
 from .. import excel_export
 from .. import sample_data
 from .country_tab import CountryTab
+from .reports_window import ReportsWindow
 from .dialogs import show_info, show_error, ask_yes_no
 
 APP_TITLE = "Nuru Workplan Manager"
@@ -61,6 +62,10 @@ class AppWindow(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Quitter", command=self.destroy)
         menubar.add_cascade(label="Fichier", menu=file_menu)
+
+        reports_menu = tk.Menu(menubar, tearoff=0)
+        reports_menu.add_command(label="Ouvrir les rapports...", command=self._open_reports)
+        menubar.add_cascade(label="Rapports", menu=reports_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="À propos", command=self._show_about)
@@ -186,6 +191,9 @@ class AppWindow(tk.Tk):
         lines = [f"{c} : {d['activities']} activités, {d['procurements']} achats"
                  for c, d in summary.items()]
         show_info(self, "Données d'exemple chargées", "\n".join(lines))
+
+    def _open_reports(self):
+        ReportsWindow(self, self.conn)
 
     def _show_about(self):
         show_info(
