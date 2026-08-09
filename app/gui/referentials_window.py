@@ -39,7 +39,9 @@ class ReferentialsWindow(tk.Toplevel):
         for table, title, col1, col2 in TABS:
             frame = ttk.Frame(notebook)
             notebook.add(frame, text=title)
-            self.panels[table] = _ReferentialPanel(frame, self.conn, table, col1, col2, self._changed)
+            panel = _ReferentialPanel(frame, self.conn, table, col1, col2, self._changed)
+            panel.pack(fill="both", expand=True)
+            self.panels[table] = panel
 
     def _changed(self):
         self.on_change()
