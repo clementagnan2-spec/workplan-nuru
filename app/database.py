@@ -101,7 +101,10 @@ def default_db_path() -> str:
 def connect(db_path: str = None) -> sqlite3.Connection:
     if db_path is None:
         db_path = default_db_path()
-    conn = sqlite3.connect(db_path)
+    # check_same_thread=False : l'import Excel s'exécute dans un thread
+    # d'arrière-plan (pour ne pas geler l'interface) et doit pouvoir
+    # utiliser la même connexion que le thread principal.
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)
