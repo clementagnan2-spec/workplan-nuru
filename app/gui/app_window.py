@@ -8,8 +8,9 @@ from tkinter import ttk, filedialog
 from .. import database as db
 from .. import excel_import
 from .. import excel_export
+from .. import sample_data
 from .country_tab import CountryTab
-from .dialogs import show_info, show_error
+from .dialogs import show_info, show_error, ask_yes_no
 
 APP_TITLE = "Nuru Workplan Manager"
 
@@ -55,6 +56,8 @@ class AppWindow(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Importer un classeur Excel...", command=self._import_excel)
         file_menu.add_command(label="Exporter vers Excel...", command=self._export_excel)
+        file_menu.add_separator()
+        file_menu.add_command(label="Charger des données d'exemple", command=self._load_sample_data)
         file_menu.add_separator()
         file_menu.add_command(label="Quitter", command=self.destroy)
         menubar.add_cascade(label="Fichier", menu=file_menu)
@@ -163,6 +166,26 @@ class AppWindow(tk.Tk):
             show_error(self, "Erreur d'export", str(exc))
             return
         show_info(self, "Export terminé", f"Le fichier a été enregistré :\n{path}")
+
+    def _load_sample_data(self):
+        clear = ask_yes_no(
+            self, "Données d'exemple",
+            "Cela va ajouter des activités et achats fictifs dans les 4 pays "
+            "(Togo, Bénin, Niger, Ghana) pour découvrir l'application.\n\n"
+            "Voulez-vous d'abord effacer les données existantes de ces pays ?\n\n"
+            "Oui = remplacer • Non = ajouter en plus des données actuelles",
+        )
+
+        try:
+            summary = sample_data.load_sample_data(self.conn, clear_existing=clear)
+        except Exception as exc:  # noqa: BLE001
+            show_error(self, "Erreur", str(exc))
+            return
+
+        self.refresh_all()
+        lines = [f"{c} : {d['activities']} activités, {d['procurements']} achats"
+                 for c, d in summary.items()]
+        show_info(self, "Données d'exemple chargées", "\n".join(lines))
 
     def _show_about(self):
         show_info(

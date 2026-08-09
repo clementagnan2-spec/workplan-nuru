@@ -53,12 +53,14 @@ git push -u origin main
 ## Utilisation
 
 1. Lancez `NuruWorkplanManager.exe` (double-clic).
-2. Menu **Fichier > Importer un classeur Excel...** pour charger vos données
-   depuis un fichier `WORKPLAN_MULTIPAYS.xlsx` (même structure que le modèle
-   Vertex42 utilisé par Nuru).
-3. Naviguez entre les onglets pays pour consulter et modifier le planning,
+2. Pour découvrir l'application tout de suite : menu **Fichier > Charger
+   des données d'exemple** (données fictives sur les 4 pays).
+3. Pour vos propres données : menu **Fichier > Importer un classeur
+   Excel...** afin de charger un fichier `WORKPLAN_MULTIPAYS.xlsx` (même
+   structure que le modèle Vertex42 utilisé par Nuru).
+4. Naviguez entre les onglets pays pour consulter et modifier le planning,
    le Gantt et les achats.
-4. Menu **Fichier > Exporter vers Excel...** pour générer un classeur à jour.
+5. Menu **Fichier > Exporter vers Excel...** pour générer un classeur à jour.
 
 ## Développement local (sans compiler le .exe)
 
