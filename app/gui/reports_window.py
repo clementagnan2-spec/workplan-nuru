@@ -1,5 +1,6 @@
-"""Fenêtre "Rapports" : vues transversales par activité, par budget ou par
-code de charge, avec filtre pays et export Excel du rapport affiché."""
+"""Fenêtre "Rapports" : répartition des fonds (% du budget/montant) avec
+deux sélecteurs — Pays, puis Répartir par (Catégorie / Pays / Bailleur /
+Code comptable) — un tableau et un graphique en barres associé."""
 
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -7,11 +8,16 @@ from tkinter import ttk, filedialog
 from .. import database as db
 from .dialogs import show_info, show_error
 
-REPORT_CATEGORY = "Par catégorie"
-REPORT_BUDGET = "Par budget (bailleur)"
-REPORT_CHARGE_CODE = "Par code de charge"
+DIM_CATEGORY = "Catégorie"
+DIM_COUNTRY = "Pays"
+DIM_DONOR = "Bailleur (budget)"
+DIM_CHARGE_CODE = "Code comptable"
 
-REPORT_TYPES = [REPORT_CATEGORY, REPORT_BUDGET, REPORT_CHARGE_CODE]
+ALL_DIMENSIONS = [DIM_CATEGORY, DIM_COUNTRY, DIM_DONOR, DIM_CHARGE_CODE]
+DIMENSIONS_WITHOUT_COUNTRY = [DIM_CATEGORY, DIM_DONOR, DIM_CHARGE_CODE]
+
+BAR_COLORS = ["#4C78A8", "#F58518", "#54A24B", "#E45756", "#B279A2",
+              "#9C755F", "#EECA3B", "#72B7B2", "#FF9DA6", "#BAB0AC"]
 
 
 def _fmt_money(v):
@@ -25,15 +31,20 @@ class ReportsWindow(tk.Toplevel):
     def __init__(self, parent, conn):
         super().__init__(parent)
         self.conn = conn
-        self.title("Rapports")
-        self.geometry("1000x600")
-        self.minsize(700, 400)
+        self.title("Rapports — Répartition des fonds")
+        self.geometry("1180x650")
+        self.minsize(820, 480)
+
+        self.tree = None
+        self.current_rows = []
+        self.current_value_key = "pct_budget"
 
         self._build_toolbar()
-        self._build_table()
+        self._build_content()
 
-        self.report_var.set(REPORT_CATEGORY)
         self.country_var.set("Tous les pays")
+        self._update_dimension_options()
+        self.dimension_var.set(DIM_CATEGORY)
         self.refresh()
 
     # ------------------------------------------------------------- toolbar
@@ -41,26 +52,41 @@ class ReportsWindow(tk.Toplevel):
         bar = ttk.Frame(self, padding=8)
         bar.pack(fill="x")
 
-        ttk.Label(bar, text="Rapport :").pack(side="left", padx=(0, 4))
-        self.report_var = tk.StringVar()
-        report_combo = ttk.Combobox(
-            bar, textvariable=self.report_var, values=REPORT_TYPES,
-            state="readonly", width=26,
-        )
-        report_combo.pack(side="left", padx=(0, 16))
-        report_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh())
-
         ttk.Label(bar, text="Pays :").pack(side="left", padx=(0, 4))
         self.country_var = tk.StringVar()
         countries = ["Tous les pays"] + [c["name"] for c in db.list_countries(self.conn)]
-        country_combo = ttk.Combobox(
+        self.country_combo = ttk.Combobox(
             bar, textvariable=self.country_var, values=countries,
-            state="readonly", width=18,
+            state="readonly", width=16,
         )
-        country_combo.pack(side="left")
-        country_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        self.country_combo.pack(side="left", padx=(0, 16))
+        self.country_combo.bind("<<ComboboxSelected>>", self._on_country_change)
+
+        ttk.Label(bar, text="Répartir par :").pack(side="left", padx=(0, 4))
+        self.dimension_var = tk.StringVar()
+        self.dimension_combo = ttk.Combobox(
+            bar, textvariable=self.dimension_var, values=ALL_DIMENSIONS,
+            state="readonly", width=20,
+        )
+        self.dimension_combo.pack(side="left")
+        self.dimension_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh())
 
         ttk.Button(bar, text="Exporter ce rapport (.xlsx)", command=self._export_report).pack(side="right")
+
+    def _on_country_change(self, event=None):
+        self._update_dimension_options()
+        self.refresh()
+
+    def _update_dimension_options(self):
+        """Le choix « Pays » dans le 2e menu n'a de sens que si le 1er menu
+        vaut « Tous les pays » (sinon un seul pays est déjà sélectionné)."""
+        if self.country_var.get() == "Tous les pays":
+            options = ALL_DIMENSIONS
+        else:
+            options = DIMENSIONS_WITHOUT_COUNTRY
+        self.dimension_combo["values"] = options
+        if self.dimension_var.get() not in options:
+            self.dimension_var.set(options[0])
 
     def _selected_country_id(self):
         name = self.country_var.get()
@@ -70,73 +96,152 @@ class ReportsWindow(tk.Toplevel):
         return row["id"] if row else None
 
     # --------------------------------------------------------------- table
-    def _build_table(self):
-        self.tree_frame = ttk.Frame(self)
-        self.tree_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-        self.tree = None  # (re)créé selon le rapport sélectionné, colonnes différentes
+    def _build_content(self):
+        split = ttk.PanedWindow(self, orient="horizontal")
+        split.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
-    def _make_tree(self, columns, headers, widths=None):
+        self.table_frame = ttk.Frame(split)
+        self.chart_frame = ttk.LabelFrame(split, text="Graphique")
+        split.add(self.table_frame, weight=2)
+        split.add(self.chart_frame, weight=3)
+
+        self.canvas = tk.Canvas(self.chart_frame, bg="white", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.bind("<Configure>", lambda e: self._draw_chart())
+
+    def _make_tree(self, columns, headers, widths):
         if self.tree is not None:
             self.tree.destroy()
-        self.tree = ttk.Treeview(self.tree_frame, columns=columns, show="headings")
-        for i, (c, h) in enumerate(zip(columns, headers)):
+        self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings")
+        for c, h, w in zip(columns, headers, widths):
             self.tree.heading(c, text=h)
-            self.tree.column(c, width=(widths[i] if widths else 120), anchor="w")
-        vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
+            self.tree.column(c, width=w, anchor="w")
+        vsb = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+        self.tree.tag_configure("total", font=("Segoe UI", 9, "bold"))
 
     # ------------------------------------------------------------- refresh
     def refresh(self):
-        report = self.report_var.get()
+        dimension = self.dimension_var.get()
         country_id = self._selected_country_id()
 
-        if report == REPORT_CATEGORY:
-            self._show_category_report(country_id)
-        elif report == REPORT_BUDGET:
-            self._show_budget_report(country_id)
-        elif report == REPORT_CHARGE_CODE:
-            self._show_charge_code_report(country_id)
+        if dimension == DIM_CATEGORY:
+            rows = db.breakdown_by_category(self.conn, country_id)
+            self._fill_activity_style_table("Catégorie", rows)
+            self.current_value_key = "pct_budget"
 
-    def _show_category_report(self, country_id):
-        columns = ("country", "category", "n_activites", "cost", "budget", "solde")
-        headers = ["Pays", "Catégorie", "Nb activités", "Coût total", "Budget total", "Solde"]
-        widths = [110, 180, 100, 130, 130, 130]
+        elif dimension == DIM_COUNTRY:
+            rows = db.breakdown_by_country(self.conn)
+            self._fill_activity_style_table("Pays", rows)
+            self.current_value_key = "pct_budget"
+
+        elif dimension == DIM_DONOR:
+            rows = db.breakdown_by_donor(self.conn, country_id)
+            self._fill_donor_style_table(rows)
+            self.current_value_key = "pct_budget"
+
+        elif dimension == DIM_CHARGE_CODE:
+            rows = db.breakdown_by_charge_code_pct(self.conn, country_id)
+            self._fill_charge_code_style_table(rows)
+            self.current_value_key = "pct_montant"
+
+        self.current_rows = rows
+        self._draw_chart()
+
+    def _fill_activity_style_table(self, label_header, rows):
+        columns = ("label", "budget", "pct_budget", "n_activities", "pct_activities")
+        headers = [label_header, "Budget", "% du budget", "Activités", "% des activités"]
+        widths = [160, 130, 100, 90, 110]
         self._make_tree(columns, headers, widths)
-
-        for row in db.activities_by_category(self.conn, country_id):
+        for r in rows:
+            tags = ("total",) if r.get("is_total") else ()
             self.tree.insert("", "end", values=(
-                row["country_name"], row["category_label"], row["n_activites"],
-                _fmt_money(row["cost_total"]), _fmt_money(row["budget_total"]),
-                _fmt_money(row["solde"]),
-            ))
-
-    def _show_budget_report(self, country_id):
-        columns = ("country", "donor", "cost", "budget", "solde")
-        headers = ["Pays", "Bailleur", "Coût", "Budget", "Solde"]
-        widths = [110, 140, 130, 130, 130]
-        self._make_tree(columns, headers, widths)
-
-        for row in db.budget_by_donor(self.conn, country_id):
-            tags = ("total",) if row["donor"] == "TOTAL" else ()
-            self.tree.insert("", "end", values=(
-                row["country"], row["donor"], _fmt_money(row["cost"]),
-                _fmt_money(row["budget"]), _fmt_money(row["solde"]),
+                r["label"], _fmt_money(r["budget"]), f"{r['pct_budget']:.1f}%",
+                r["n_activities"], f"{r['pct_activities']:.1f}%",
             ), tags=tags)
-        self.tree.tag_configure("total", font=("Segoe UI", 9, "bold"))
 
-    def _show_charge_code_report(self, country_id):
-        columns = ("country", "charge_code", "n_achats", "montant")
-        headers = ["Pays", "Code de charge", "Nb achats", "Montant total"]
-        widths = [110, 200, 100, 140]
+    def _fill_donor_style_table(self, rows):
+        columns = ("label", "budget", "pct_budget")
+        headers = ["Bailleur", "Budget", "% du budget"]
+        widths = [160, 150, 120]
         self._make_tree(columns, headers, widths)
-
-        for row in db.procurement_by_charge_code(self.conn, country_id):
+        for r in rows:
+            tags = ("total",) if r.get("is_total") else ()
             self.tree.insert("", "end", values=(
-                row["country_name"], row["charge_code"], row["n_achats"],
-                _fmt_money(row["montant_total"]),
-            ))
+                r["label"], _fmt_money(r["budget"]), f"{r['pct_budget']:.1f}%",
+            ), tags=tags)
+
+    def _fill_charge_code_style_table(self, rows):
+        columns = ("label", "montant", "pct_montant")
+        headers = ["Code comptable", "Montant achats", "% du montant"]
+        widths = [180, 150, 120]
+        self._make_tree(columns, headers, widths)
+        for r in rows:
+            tags = ("total",) if r.get("is_total") else ()
+            self.tree.insert("", "end", values=(
+                r["label"], _fmt_money(r["montant"]), f"{r['pct_montant']:.1f}%",
+            ), tags=tags)
+
+    # --------------------------------------------------------------- chart
+    def _draw_chart(self):
+        canvas = self.canvas
+        canvas.delete("all")
+
+        data = [r for r in self.current_rows if not r.get("is_total")]
+        if not data:
+            canvas.create_text(20, 20, anchor="nw", text="Aucune donnée à afficher.")
+            return
+
+        width = max(canvas.winfo_width(), 300)
+        height = max(canvas.winfo_height(), 260)
+
+        margin_left = 46
+        margin_bottom = 90
+        margin_top = 26
+        chart_h = max(height - margin_top - margin_bottom, 40)
+        chart_w = max(width - margin_left - 20, 60)
+
+        n = len(data)
+        bar_w = min(60, chart_w / max(n, 1) * 0.55)
+        gap = (chart_w - bar_w * n) / (n + 1) if n else 0
+
+        # grille + axe Y (0-100%)
+        for pct in (0, 25, 50, 75, 100):
+            y = margin_top + chart_h - (pct / 100) * chart_h
+            canvas.create_line(margin_left, y, width - 10, y, fill="#e8e8e8")
+            canvas.create_text(margin_left - 6, y, anchor="e", text=f"{pct}%", font=("Segoe UI", 7), fill="#888")
+
+        x = margin_left + gap
+        for i, item in enumerate(data):
+            val = item.get(self.current_value_key, 0) or 0
+            bar_h = (val / 100) * chart_h
+            y1 = margin_top + chart_h
+            y0 = y1 - bar_h
+            color = BAR_COLORS[i % len(BAR_COLORS)]
+            cap_h = min(10, bar_w / 2, max(bar_h, 1))
+
+            # corps du "cylindre"
+            canvas.create_rectangle(x, y0 + cap_h / 2, x + bar_w, y1, fill=color, outline="")
+            # capuchon arrondi en haut (effet cylindrique)
+            canvas.create_oval(x, y0, x + bar_w, y0 + cap_h, fill=color, outline="")
+            # base arrondie (effet cylindrique)
+            canvas.create_oval(x, y1 - cap_h / 2, x + bar_w, y1 + cap_h / 2, fill=color, outline="")
+
+            canvas.create_text(x + bar_w / 2, y0 - 10, text=f"{val:.1f}%", font=("Segoe UI", 8, "bold"))
+
+            label = str(item["label"])
+            if len(label) > 18:
+                label = label[:17] + "…"
+            canvas.create_text(
+                x + bar_w / 2, y1 + 14, text=label, font=("Segoe UI", 7),
+                angle=35, anchor="e",
+            )
+            x += bar_w + gap
+
+        canvas.create_line(margin_left, margin_top, margin_left, margin_top + chart_h, fill="#bbb")
+        canvas.create_line(margin_left, margin_top + chart_h, width - 10, margin_top + chart_h, fill="#bbb")
 
     # -------------------------------------------------------------- export
     def _export_report(self):
@@ -148,7 +253,7 @@ class ReportsWindow(tk.Toplevel):
             title="Exporter le rapport",
             defaultextension=".xlsx",
             filetypes=[("Classeur Excel", "*.xlsx")],
-            initialfile=f"rapport_{self.report_var.get().lower().replace(' ', '_')}.xlsx",
+            initialfile=f"rapport_{self.dimension_var.get().lower().replace(' ', '_').replace('(', '').replace(')', '')}.xlsx",
         )
         if not path:
             return
@@ -173,7 +278,7 @@ class ReportsWindow(tk.Toplevel):
                     ws.cell(row=r_idx, column=col, value=v)
 
             for col in range(1, len(headers) + 1):
-                ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 18
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
 
             wb.save(path)
         except Exception as exc:  # noqa: BLE001

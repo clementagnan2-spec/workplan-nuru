@@ -485,3 +485,137 @@ def procurement_by_charge_code(conn, country_id: int = None):
         params = (country_id,)
     sql += "GROUP BY c.name, charge_code ORDER BY c.name, charge_code"
     return conn.execute(sql, params).fetchall()
+
+
+# ------------------------------------------------- répartition des fonds (%)
+def breakdown_by_category(conn, country_id: int = None):
+    """Répartition du budget (et du nombre d'activités) par catégorie,
+    en valeur et en % du total, avec une ligne TOTAL = 100%."""
+    sql = (
+        "SELECT COALESCE(NULLIF(TRIM(category), ''), '') AS cat_code, "
+        "COUNT(*) AS n_activities, "
+        "COALESCE(SUM(budget_ni_hct + budget_tifr_usaid + budget_ftit), 0) AS budget "
+        "FROM activities "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE country_id = ? "
+        params = (country_id,)
+    sql += "GROUP BY cat_code ORDER BY cat_code"
+    rows = conn.execute(sql, params).fetchall()
+
+    total_budget = sum(r["budget"] for r in rows)
+    total_n = sum(r["n_activities"] for r in rows)
+
+    result = []
+    for r in rows:
+        code = r["cat_code"]
+        label = CATEGORY_LABELS.get(code, code) if code else "(sans catégorie)"
+        result.append({
+            "label": label,
+            "budget": r["budget"],
+            "pct_budget": (r["budget"] / total_budget * 100) if total_budget else 0.0,
+            "n_activities": r["n_activities"],
+            "pct_activities": (r["n_activities"] / total_n * 100) if total_n else 0.0,
+        })
+    result.append({
+        "label": "TOTAL", "budget": total_budget,
+        "pct_budget": 100.0 if total_budget else 0.0,
+        "n_activities": total_n,
+        "pct_activities": 100.0 if total_n else 0.0,
+        "is_total": True,
+    })
+    return result
+
+
+def breakdown_by_country(conn):
+    """Répartition du budget (et du nombre d'activités) par pays, en % du
+    total général. Utilisé uniquement quand « Tous les pays » est choisi."""
+    sql = (
+        "SELECT c.name AS label, COUNT(a.id) AS n_activities, "
+        "COALESCE(SUM(a.budget_ni_hct + a.budget_tifr_usaid + a.budget_ftit), 0) AS budget "
+        "FROM countries c LEFT JOIN activities a ON a.country_id = c.id "
+        "GROUP BY c.name ORDER BY c.name"
+    )
+    rows = conn.execute(sql).fetchall()
+
+    total_budget = sum(r["budget"] for r in rows)
+    total_n = sum(r["n_activities"] for r in rows)
+
+    result = []
+    for r in rows:
+        result.append({
+            "label": r["label"],
+            "budget": r["budget"],
+            "pct_budget": (r["budget"] / total_budget * 100) if total_budget else 0.0,
+            "n_activities": r["n_activities"],
+            "pct_activities": (r["n_activities"] / total_n * 100) if total_n else 0.0,
+        })
+    result.append({
+        "label": "TOTAL", "budget": total_budget,
+        "pct_budget": 100.0 if total_budget else 0.0,
+        "n_activities": total_n,
+        "pct_activities": 100.0 if total_n else 0.0,
+        "is_total": True,
+    })
+    return result
+
+
+def breakdown_by_donor(conn, country_id: int = None):
+    """Répartition du budget par bailleur (NI/HCT, TIFR-USAID, FTIT), en %
+    du total. Pas de colonne « activités » : une même activité peut être
+    financée par plusieurs bailleurs à la fois."""
+    sql = (
+        "SELECT COALESCE(SUM(budget_ni_hct), 0) AS ni_hct, "
+        "COALESCE(SUM(budget_tifr_usaid), 0) AS tifr, "
+        "COALESCE(SUM(budget_ftit), 0) AS ftit FROM activities "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE country_id = ? "
+        params = (country_id,)
+    row = conn.execute(sql, params).fetchone()
+
+    items = [("NI/HCT", row["ni_hct"]), ("TIFR-USAID", row["tifr"]), ("FTIT", row["ftit"])]
+    total = sum(v for _, v in items)
+
+    result = []
+    for label, budget in items:
+        result.append({
+            "label": label, "budget": budget,
+            "pct_budget": (budget / total * 100) if total else 0.0,
+        })
+    result.append({
+        "label": "TOTAL", "budget": total,
+        "pct_budget": 100.0 if total else 0.0, "is_total": True,
+    })
+    return result
+
+
+def breakdown_by_charge_code_pct(conn, country_id: int = None):
+    """Répartition du montant des achats par code de charge, en % du total
+    (basé sur le suivi des achats, pas sur le planning)."""
+    sql = (
+        "SELECT COALESCE(NULLIF(TRIM(charge_code), ''), '(sans code de charge)') AS label, "
+        "COALESCE(SUM(montant), 0) AS montant FROM procurements "
+    )
+    params = ()
+    if country_id is not None:
+        sql += "WHERE country_id = ? "
+        params = (country_id,)
+    sql += "GROUP BY label ORDER BY label"
+    rows = conn.execute(sql, params).fetchall()
+
+    total = sum(r["montant"] for r in rows)
+
+    result = []
+    for r in rows:
+        result.append({
+            "label": r["label"], "montant": r["montant"],
+            "pct_montant": (r["montant"] / total * 100) if total else 0.0,
+        })
+    result.append({
+        "label": "TOTAL", "montant": total,
+        "pct_montant": 100.0 if total else 0.0, "is_total": True,
+    })
+    return result
