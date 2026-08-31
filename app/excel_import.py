@@ -74,6 +74,14 @@ def import_workbook(conn, path: str, progress_callback=None) -> dict:
             n_proc = _import_procurement_sheet(conn, wb[sheet_name], country)
             summary.setdefault(country, {})["procurements"] = n_proc
 
+    # Les coûts des activités ne sont jamais lus depuis le fichier : ils sont
+    # recalculés à partir des achats au statut "Livré" pour tous les pays,
+    # pour rester cohérents même si l'import ne couvre qu'une partie du classeur.
+    if progress_callback:
+        progress_callback("Ventilation des coûts depuis les achats livrés...")
+    for country in db.list_countries(conn):
+        db.recompute_costs_from_procurements(conn, country["id"])
+
     return summary
 
 
@@ -135,10 +143,6 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
         cost_a = ws.cell(row=r, column=10).value
         cost_c = ws.cell(row=r, column=11).value
 
-        cost_ni = ws.cell(row=r, column=13).value
-        cost_tifr = ws.cell(row=r, column=14).value
-        cost_ftit = ws.cell(row=r, column=15).value
-
         budget_ni = ws.cell(row=r, column=17).value
         budget_tifr = ws.cell(row=r, column=18).value
         budget_ftit = ws.cell(row=r, column=19).value
@@ -153,13 +157,12 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
             "task": task,
             "assigned_to": None,
             # "progress" n'est pas lu depuis le fichier : calculé automatiquement
+            # "cost_*" non plus : recalculé après import depuis les achats "Livré"
+            # (voir database.recompute_costs_from_procurements, appelé en fin d'import)
             "start_date": _to_iso_date(debut),
             "end_date": _to_iso_date(fin),
             "nb_pieces": _to_float(nb_pieces),
             "category": category,
-            "cost_ni_hct": _to_float(cost_ni),
-            "cost_tifr_usaid": _to_float(cost_tifr),
-            "cost_ftit": _to_float(cost_ftit),
             "budget_ni_hct": _to_float(budget_ni),
             "budget_tifr_usaid": _to_float(budget_tifr),
             "budget_ftit": _to_float(budget_ftit),

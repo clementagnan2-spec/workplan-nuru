@@ -1,15 +1,16 @@
 """Onglet d'un pays : tableau de bord + planning (Gantt) + achats.
 
-L'avancement des activités n'est plus un champ saisi par l'utilisateur :
-il est calculé automatiquement par database.py (coût total / budget
-total) et simplement affiché (tableau, Gantt, export)."""
+Deux calculs automatiques, jamais saisis manuellement :
+- Coût d'une activité = somme des achats « Livré » dont le code
+  correspond, ventilée par bailleur via le champ "Bailleur" de l'achat.
+- Avancement d'une activité = coût total / budget total."""
 
 import tkinter as tk
 from tkinter import ttk
 import datetime
 
 from .. import database as db
-from .dialogs import FormDialog, ask_yes_no, show_error
+from .dialogs import FormDialog, ask_yes_no, show_error, show_info
 
 STATUT_CHOICES = ["En cours", "Livré", "Annulé", "En attente"]
 TYPE_PROC_CHOICES = ["National", "International"]
@@ -17,7 +18,8 @@ TYPE_PROC_CHOICES = ["National", "International"]
 
 def _activity_form_fields(conn):
     """Construit la liste des champs du formulaire d'activité à l'ouverture
-    (les listes déroulantes sont rechargées depuis les référentiels)."""
+    (les listes déroulantes sont rechargées depuis les référentiels).
+    PAS de champ Coût ni Avancement : tous deux calculés automatiquement."""
     categories = db.referential_values(conn, "categories") or ["P", "I", "A", "C"]
     activity_codes = db.referential_values(conn, "activity_codes")
     return [
@@ -25,14 +27,10 @@ def _activity_form_fields(conn):
         ("code", "Code activité", "choice", activity_codes),
         ("task", "Tâche / Activité", "text", None),
         ("assigned_to", "Assigné à", "text", None),
-        # PAS de champ "Avancement" : calculé automatiquement = coût / budget
         ("start_date", "Date début", "date", None),
         ("end_date", "Date fin", "date", None),
         ("nb_pieces", "Nb pièces", "float", None),
         ("category", "Catégorie", "choice", categories),
-        ("cost_ni_hct", "Coût NI/HCT", "float", None),
-        ("cost_tifr_usaid", "Coût TIFR-USAID", "float", None),
-        ("cost_ftit", "Coût FTIT", "float", None),
         ("budget_ni_hct", "Budget NI/HCT", "float", None),
         ("budget_tifr_usaid", "Budget TIFR-USAID", "float", None),
         ("budget_ftit", "Budget FTIT", "float", None),
@@ -44,6 +42,7 @@ def _procurement_form_fields(conn):
     categories = db.referential_values(conn, "categories") or ["P", "I", "A", "C"]
     charge_codes = db.referential_values(conn, "charge_codes")
     activity_codes = db.referential_values(conn, "activity_codes")
+    donors = db.referential_values(conn, "budget_lines") or ["NI/HCT", "TIFR-USAID", "FTIT"]
     return [
         ("dossier_workplan", "Code activité (workplan)", "choice", activity_codes),
         ("n_pr", "N° PR", "text", None),
@@ -61,7 +60,7 @@ def _procurement_form_fields(conn):
         ("date_livraison_prevue", "Date livraison prévue", "date", None),
         ("statut_bc", "Statut du BC", "choice", STATUT_CHOICES),
         ("type_procurement", "Type (National/Intl)", "choice", TYPE_PROC_CHOICES),
-        ("project", "Projet", "text", None),
+        ("project", "Bailleur (pour ventilation du coût)", "choice", donors),
         ("charge_code", "Code de charge", "choice", charge_codes),
         ("code", "Code", "text", None),
         ("bon_livraison", "Bon de livraison", "text", None),
@@ -138,7 +137,8 @@ class CountryTab(ttk.Frame):
         ttk.Button(toolbar, text="Modifier", command=self._edit_activity).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Supprimer", command=self._delete_activity).pack(side="left", padx=4)
         ttk.Label(
-            toolbar, text="L'avancement (%) est calculé automatiquement = coût / budget",
+            toolbar, text="Coût = achats « Livré » liés à l'activité. Avancement = coût / budget. "
+                          "Les deux sont automatiques.",
             foreground="#666",
         ).pack(side="left", padx=16)
 
@@ -197,6 +197,9 @@ class CountryTab(ttk.Frame):
             show_error(self, "Erreur", f"Impossible d'enregistrer l'activité :\n{exc}")
             return
 
+        # le code de l'activité peut avoir changé : on reventile les coûts
+        # depuis les achats livrés pour rester cohérent
+        db.recompute_costs_from_procurements(self.conn, self.country["id"])
         self.refresh()
         self.on_change()
 
@@ -303,7 +306,7 @@ class CountryTab(ttk.Frame):
         except Exception as exc:  # noqa: BLE001
             show_error(self, "Erreur", f"Impossible d'enregistrer l'achat :\n{exc}")
             return
-        self.refresh()
+        self._recompute_and_refresh()
 
     def _edit_procurement(self):
         proc_id = self._selected_procurement_id()
@@ -318,7 +321,7 @@ class CountryTab(ttk.Frame):
         except Exception as exc:  # noqa: BLE001
             show_error(self, "Erreur", f"Impossible d'enregistrer l'achat :\n{exc}")
             return
-        self.refresh()
+        self._recompute_and_refresh()
 
     def _delete_procurement(self):
         proc_id = self._selected_procurement_id()
@@ -326,7 +329,35 @@ class CountryTab(ttk.Frame):
             return
         if ask_yes_no(self, "Confirmer", "Supprimer cet achat ?"):
             db.delete_procurement(self.conn, proc_id)
-            self.refresh()
+            self._recompute_and_refresh()
+
+    def _recompute_and_refresh(self):
+        """Reventile les coûts des activités depuis les achats « Livré »,
+        avertit si certains achats livrés n'ont pas pu être rattachés."""
+        result = db.recompute_costs_from_procurements(self.conn, self.country["id"])
+        self.refresh()
+        self.on_change()
+
+        unmatched_code = result.get("unmatched_code", [])
+        unmatched_donor = result.get("unmatched_donor", [])
+        if unmatched_code or unmatched_donor:
+            lines = []
+            if unmatched_code:
+                lines.append("Code activité introuvable (coût non ventilé) :")
+                for p in unmatched_code:
+                    lines.append(f"  • {p['designation'] or p['n_bc'] or '(sans désignation)'} "
+                                 f"— code « {p['dossier_workplan'] or p['code'] or ''} »")
+            if unmatched_donor:
+                lines.append("Bailleur non reconnu (coût non ventilé) :")
+                for p in unmatched_donor:
+                    lines.append(f"  • {p['designation'] or p['n_bc'] or '(sans désignation)'} "
+                                 f"— bailleur « {p['project'] or ''} »")
+            show_info(
+                self, "Achats livrés non rattachés",
+                "Ces achats sont au statut « Livré » mais leur montant n'a pas pu être "
+                "ajouté au coût d'une activité :\n\n" + "\n".join(lines) +
+                "\n\nVérifiez le code activité et/ou le bailleur de ces achats.",
+            )
 
     def _refresh_procurement(self):
         self.procurement_tree.delete(*self.procurement_tree.get_children())

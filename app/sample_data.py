@@ -184,9 +184,6 @@ def load_sample_data(conn, clear_existing: bool = False) -> dict:
                     "end_date": a["end"],
                     "nb_pieces": a["nb_pieces"],
                     "category": a["category"],
-                    "cost_ni_hct": a["cost_ni_hct"],
-                    "cost_tifr_usaid": a["cost_tifr_usaid"],
-                    "cost_ftit": a["cost_ftit"],
                     "budget_ni_hct": a["budget_ni_hct"],
                     "budget_tifr_usaid": a["budget_tifr_usaid"],
                     "budget_ftit": a["budget_ftit"],
@@ -198,6 +195,11 @@ def load_sample_data(conn, clear_existing: bool = False) -> dict:
         for p in SAMPLE_PROCUREMENT.get(country_name, []):
             db.add_procurement(conn, country_id, p)
             n_proc += 1
+
+        # le coût de chaque activité est ventilé depuis les achats "Livré"
+        # ci-dessus (voir champ "project" = bailleur de chaque achat), pas
+        # depuis les valeurs cost_* du dictionnaire SAMPLE_PLAN (ignorées)
+        db.recompute_costs_from_procurements(conn, country_id)
 
         summary[country_name] = {"activities": n_act, "procurements": n_proc}
 

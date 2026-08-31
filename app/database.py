@@ -283,6 +283,78 @@ def _compute_progress(data: dict, existing: dict = None) -> float:
     return cost_total / budget_total
 
 
+# --------------------------------------- ventilation coût <- achats livrés
+# Le coût d'une activité n'est plus saisi manuellement : il est la somme
+# des montants des achats au statut "Livré" dont le code correspond au
+# code de l'activité, ventilée par bailleur (champ "project" de l'achat,
+# qui doit valoir NI/HCT, TIFR-USAID ou FTIT).
+DONOR_COLUMN_BY_LABEL = {
+    "NI/HCT": "cost_ni_hct",
+    "TIFR-USAID": "cost_tifr_usaid",
+    "FTIT": "cost_ftit",
+}
+
+
+def _donor_column(donor_label):
+    if not donor_label:
+        return None
+    return DONOR_COLUMN_BY_LABEL.get(str(donor_label).strip().upper())
+
+
+def _is_delivered(statut_bc) -> bool:
+    if not statut_bc:
+        return False
+    s = str(statut_bc).strip().lower()
+    return s in ("livré", "livre", "livrée", "livree")
+
+
+def recompute_costs_from_procurements(conn, country_id: int) -> dict:
+    """Recalcule le coût (par bailleur) de chaque activité du pays comme la
+    somme des achats « Livré » dont le code correspond, puis recalcule
+    l'avancement. Renvoie les achats livrés qui n'ont pas pu être ventilés
+    (code d'activité introuvable, ou bailleur non reconnu) pour alerte."""
+    activities = list_activities(conn, country_id)
+    by_code = {}
+    for a in activities:
+        code = (a["code"] or "").strip().upper()
+        if code:
+            by_code.setdefault(code, []).append(a["id"])
+
+    sums = {a["id"]: {"cost_ni_hct": 0.0, "cost_tifr_usaid": 0.0, "cost_ftit": 0.0} for a in activities}
+
+    unmatched_code = []
+    unmatched_donor = []
+
+    for p in list_procurements(conn, country_id):
+        if not _is_delivered(p["statut_bc"]):
+            continue
+        code = (p["dossier_workplan"] or p["code"] or "").strip().upper()
+        if not code or code not in by_code:
+            unmatched_code.append(p)
+            continue
+        col = _donor_column(p["project"])
+        if not col:
+            unmatched_donor.append(p)
+            continue
+        for act_id in by_code[code]:
+            sums[act_id][col] += (p["montant"] or 0.0)
+
+    for act_id, cost_dict in sums.items():
+        existing = get_activity(conn, act_id)
+        data = dict(cost_dict)
+        data["budget_ni_hct"] = existing["budget_ni_hct"]
+        data["budget_tifr_usaid"] = existing["budget_tifr_usaid"]
+        data["budget_ftit"] = existing["budget_ftit"]
+        progress = _compute_progress(data)
+        conn.execute(
+            "UPDATE activities SET cost_ni_hct=?, cost_tifr_usaid=?, cost_ftit=?, progress=? WHERE id=?",
+            (cost_dict["cost_ni_hct"], cost_dict["cost_tifr_usaid"], cost_dict["cost_ftit"], progress, act_id),
+        )
+    conn.commit()
+
+    return {"unmatched_code": unmatched_code, "unmatched_donor": unmatched_donor}
+
+
 def list_activities(conn, country_id: int):
     return conn.execute(
         "SELECT a.*, p.name AS phase_name FROM activities a "

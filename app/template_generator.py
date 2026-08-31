@@ -32,7 +32,8 @@ PROCUREMENT_HEADERS = [
     "Lien Dossier WORK PLAN", "N° PR", "N° RFQ", "N° Dossier BC", "Date", "N° Proforma",
     "Demandeur", "Designation", "Fournisseur/Vendeur", "DATE", "Montant",
     "Programme (P/I/A/C)", "Lieu de livraison", "Date de livraison prevue",
-    "Statut du BC", "Type de procurement", "PROJECT", "CHARGE CODE", "CODE",
+    "Statut du BC", "Type de procurement", "PROJECT (Bailleur : NI/HCT, TIFR-USAID ou FTIT)",
+    "CHARGE CODE", "CODE",
     "Bon de Livraisons", "Facture definitive", "Date de reception facture definitive",
     "RIB", "Banque du fournisseur", "Mode de Paiement", "Date de paiement",
     "Validation/Authorization", "Commentaires",
@@ -83,8 +84,10 @@ def generate_template(path: str):
 
         note = ws.cell(row=5, column=1, value=(
             "Ajoutez vos lignes « Phase X » puis vos activités en dessous. "
-            "La colonne AVANCEMENT n'est pas utilisée : elle est calculée "
-            "automatiquement par le logiciel (coût / budget)."
+            "Les colonnes AVANCEMENT et COÛT ne sont pas utilisées : l'avancement "
+            "est calculé automatiquement (coût / budget) et le coût est ventilé "
+            "automatiquement depuis les achats au statut « Livré » (voir la feuille "
+            "procurement, colonne PROJECT = bailleur)."
         ))
         note.font = NOTE_FONT
 
@@ -98,6 +101,8 @@ def generate_template(path: str):
         ws.cell(row=2, column=1, value="A1XX")
         ws.cell(row=2, column=8, value="Exemple - désignation de l'achat à remplacer")
         ws.cell(row=2, column=11, value=0)
+        ws.cell(row=2, column=15, value="En cours")  # Statut du BC (passer à "Livré" pour ventiler le coût)
+        ws.cell(row=2, column=17, value="NI/HCT")    # PROJECT = bailleur (NI/HCT, TIFR-USAID ou FTIT)
 
         note = ws.cell(row=4, column=len(PROCUREMENT_HEADERS) + 2,
                         value="Insérez vos achats à partir de la ligne 2 (remplacez la ligne d'exemple).")
