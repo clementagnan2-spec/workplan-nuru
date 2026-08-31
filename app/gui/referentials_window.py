@@ -1,12 +1,13 @@
 """Fenêtre "Référentiels" : gérer les listes de valeurs utilisées dans les
 formulaires (codes d'activité, catégories, lignes budgétaires/bailleurs,
-codes de charge)."""
+codes de charge), avec import/export Excel par liste."""
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 
 from .. import database as db
-from .dialogs import FormDialog, ask_yes_no, show_error
+from .. import referential_io
+from .dialogs import FormDialog, ask_yes_no, show_error, show_info
 
 TABS = [
     ("activity_codes", "Codes d'activité", "Code", "Libellé"),
@@ -60,6 +61,8 @@ class _ReferentialPanel(ttk.Frame):
         ttk.Button(toolbar, text="+ Ajouter", command=self._add).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Modifier", command=self._edit).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Supprimer", command=self._delete).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="📥 Importer (.xlsx)", command=self._import).pack(side="left", padx=(16, 4))
+        ttk.Button(toolbar, text="📄 Télécharger le modèle", command=self._download_template).pack(side="left", padx=4)
 
         self.tree = ttk.Treeview(self, columns=("value", "label"), show="headings", height=14)
         self.tree.heading("value", text=col1_label)
@@ -134,3 +137,40 @@ class _ReferentialPanel(ttk.Frame):
         for row in db.list_referential(self.conn, self.table):
             key = db.REFERENTIAL_TABLES[self.table]
             self.tree.insert("", "end", iid=str(row["id"]), values=(row[key], row["label"] or ""))
+
+    # -------------------------------------------------------- import/modèle
+    def _download_template(self):
+        path = filedialog.asksaveasfilename(
+            title=f"Télécharger le modèle — {self.col1_label}",
+            defaultextension=".xlsx",
+            filetypes=[("Classeur Excel", "*.xlsx")],
+            initialfile=f"modele_{self.table}.xlsx",
+        )
+        if not path:
+            return
+        try:
+            referential_io.generate_referential_template(path, self.col1_label, self.col2_label)
+        except Exception as exc:  # noqa: BLE001
+            show_error(self, "Erreur", str(exc))
+            return
+        show_info(
+            self, "Modèle téléchargé",
+            f"Le modèle a été enregistré :\n{path}\n\n"
+            "Remplissez-le (2 colonnes) puis utilisez « 📥 Importer (.xlsx) ».",
+        )
+
+    def _import(self):
+        path = filedialog.askopenfilename(
+            title=f"Importer — {self.col1_label}",
+            filetypes=[("Classeurs Excel", "*.xlsx *.xlsm"), ("Tous les fichiers", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            n = referential_io.import_referential(self.conn, self.table, path)
+        except Exception as exc:  # noqa: BLE001
+            show_error(self, "Erreur d'import", str(exc))
+            return
+        self.refresh()
+        self.on_change()
+        show_info(self, "Import terminé", f"{n} ligne(s) importée(s) ou mise(s) à jour.")

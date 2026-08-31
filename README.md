@@ -14,7 +14,11 @@ projets multi-pays (Togo, Bénin, Niger, Ghana).
   - **l'avancement (%) est calculé automatiquement** = coût total ÷ budget total. Ce n'est jamais une saisie manuelle. En cas de dépassement de budget, l'avancement peut dépasser 100 % (affiché tel quel, comme signal d'alerte) — le curseur visuel dans le diagramme de Gantt est cependant plafonné visuellement à 100 % pour rester lisible,
   - un **diagramme de Gantt** simple généré automatiquement à partir des dates,
   - le **suivi des achats** (PR, RFQ, Bon de commande, fournisseur, statut, paiement...).
-- Un menu **Référentiels** pour créer/modifier/supprimer les listes utilisées dans les formulaires : Codes d'activité, Catégories, Budget (bailleurs), Codes de charge. Ces listes alimentent les menus déroulants des formulaires (vous pouvez aussi taper une nouvelle valeur directement).
+- Un menu **Référentiels** pour créer/modifier/supprimer les listes utilisées dans les formulaires : Codes d'activité, Catégories, Budget (bailleurs), Codes de charge. Chaque onglet du menu Référentiels propose désormais :
+  - **📥 Importer (.xlsx)** — charge en une fois toute une liste (fichier à 2 colonnes Code/Libellé). Réimportable sans risque : une valeur déjà présente voit son libellé mis à jour plutôt que d'être dupliquée.
+  - **📄 Télécharger le modèle** — génère le fichier vierge à remplir pour cet onglet précis.
+
+  Ces listes alimentent les menus déroulants des formulaires d'activité et d'achat (vous pouvez aussi taper une nouvelle valeur directement).
 - Un menu **Rapports** — répartition des fonds à deux sélecteurs :
   - **Pays** : Tous les pays, ou un pays précis
   - **Répartir par** : Catégorie, Pays *(si "Tous les pays")*, Bailleur (budget), Code comptable
