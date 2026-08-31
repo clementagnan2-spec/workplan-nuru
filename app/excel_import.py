@@ -1,11 +1,10 @@
 """
-Import d'un classeur Excel de type "WORKPLAN_MULTIPAYS" (modèle Vertex42
-adapté) vers la base de données SQLite de l'application.
+Import d'un classeur Excel de type "WORKPLAN_MULTIPAYS" vers la base de
+données SQLite de l'application.
 
-Le classeur attendu contient, pour chaque pays, une feuille "WORKPLAN <PAYS>"
-(planning + budget) et éventuellement une feuille "procurement <PAYS>"
-(suivi des achats). La feuille "CONSOLIDATION" est ignorée (c'est une vue
-agrégée reconstruite automatiquement par l'application).
+L'avancement (colonne "AVANCEMENT" du fichier source, si présente) n'est
+PAS importé : il est toujours recalculé automatiquement par
+database.add_activity() comme (coût total / budget total).
 """
 
 import re
@@ -14,7 +13,7 @@ import openpyxl
 
 from . import database as db
 
-PROCUREMENT_COLUMN_ORDER = db.PROCUREMENT_FIELDS  # 28 colonnes, ordre du fichier source
+PROCUREMENT_COLUMN_ORDER = db.PROCUREMENT_FIELDS
 
 
 def _to_iso_date(value):
@@ -23,7 +22,6 @@ def _to_iso_date(value):
     if isinstance(value, (datetime.date, datetime.datetime)):
         return value.date().isoformat() if isinstance(value, datetime.datetime) else value.isoformat()
     s = str(value).strip()
-    # essaie quelques formats courants (jj/mm/aaaa, jj-mm-aaaa...)
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y"):
         try:
             return datetime.datetime.strptime(s, fmt).date().isoformat()
@@ -54,8 +52,6 @@ END_MARK_RE = re.compile(r"marque la fin du planning", re.IGNORECASE)
 
 
 def import_workbook(conn, path: str, progress_callback=None) -> dict:
-    """Importe toutes les feuilles WORKPLAN <PAYS> / procurement <PAYS>
-    d'un classeur Excel dans la base. Retourne un résumé {pays: {...}}."""
     wb = openpyxl.load_workbook(path, data_only=True)
     summary = {}
 
@@ -119,12 +115,9 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
         if col_b and PHASE_RE.match(str(col_b)):
             current_phase_pos += 1
             phase_label = f"{str(col_b).strip()} - {str(col_c).strip()}" if col_c else str(col_b).strip()
-            current_phase_id = db.get_or_create_phase(
-                conn, country_id, phase_label, current_phase_pos
-            )
+            current_phase_id = db.get_or_create_phase(conn, country_id, phase_label, current_phase_pos)
             continue
 
-        # ligne de total / ligne vide : code et description absents
         if not col_b and not col_c:
             continue
         if col_a and "insérez" in str(col_a).lower():
@@ -133,7 +126,6 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
         code = _to_text(col_b)
         task = _to_text(col_c) or code or "(sans nom)"
 
-        avancement = ws.cell(row=r, column=4).value
         debut = ws.cell(row=r, column=5).value
         fin = ws.cell(row=r, column=6).value
         nb_pieces = ws.cell(row=r, column=7).value
@@ -142,18 +134,15 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
         cost_i = ws.cell(row=r, column=9).value
         cost_a = ws.cell(row=r, column=10).value
         cost_c = ws.cell(row=r, column=11).value
-        # colonne 12 = total cout par categorie (recalculé, ignoré)
 
         cost_ni = ws.cell(row=r, column=13).value
         cost_tifr = ws.cell(row=r, column=14).value
         cost_ftit = ws.cell(row=r, column=15).value
-        # colonne 16 = total cout par bailleur (recalculé, ignoré)
 
         budget_ni = ws.cell(row=r, column=17).value
         budget_tifr = ws.cell(row=r, column=18).value
         budget_ftit = ws.cell(row=r, column=19).value
 
-        # catégorie dominante (P/I/A/C) pour classement simple
         cat_values = {"P": _to_float(cost_p), "I": _to_float(cost_i),
                       "A": _to_float(cost_a), "C": _to_float(cost_c)}
         category = max(cat_values, key=cat_values.get) if any(cat_values.values()) else None
@@ -163,7 +152,7 @@ def _import_workplan_sheet(conn, ws, country_name: str) -> int:
             "code": code,
             "task": task,
             "assigned_to": None,
-            "progress": _to_float(avancement),
+            # "progress" n'est pas lu depuis le fichier : calculé automatiquement
             "start_date": _to_iso_date(debut),
             "end_date": _to_iso_date(fin),
             "nb_pieces": _to_float(nb_pieces),

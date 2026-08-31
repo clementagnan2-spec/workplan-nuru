@@ -1,4 +1,8 @@
-"""Onglet d'un pays : tableau de bord + planning (Gantt) + achats."""
+"""Onglet d'un pays : tableau de bord + planning (Gantt) + achats.
+
+L'avancement des activités n'est plus un champ saisi par l'utilisateur :
+il est calculé automatiquement par database.py (coût total / budget
+total) et simplement affiché (tableau, Gantt, export)."""
 
 import tkinter as tk
 from tkinter import ttk
@@ -7,15 +11,13 @@ import datetime
 from .. import database as db
 from .dialogs import FormDialog, ask_yes_no, show_error
 
-# Ces listes sont des repli si les référentiels sont vides ; les valeurs
-# réelles proposées dans les formulaires viennent de db.referential_values()
-# (menu Rapports > ... non, menu "Référentiels"), rechargées à chaque
-# ouverture de formulaire.
 STATUT_CHOICES = ["En cours", "Livré", "Annulé", "En attente"]
 TYPE_PROC_CHOICES = ["National", "International"]
 
 
 def _activity_form_fields(conn):
+    """Construit la liste des champs du formulaire d'activité à l'ouverture
+    (les listes déroulantes sont rechargées depuis les référentiels)."""
     categories = db.referential_values(conn, "categories") or ["P", "I", "A", "C"]
     activity_codes = db.referential_values(conn, "activity_codes")
     return [
@@ -23,7 +25,7 @@ def _activity_form_fields(conn):
         ("code", "Code activité", "choice", activity_codes),
         ("task", "Tâche / Activité", "text", None),
         ("assigned_to", "Assigné à", "text", None),
-        ("progress", "Avancement (%)", "percent", None),
+        # PAS de champ "Avancement" : calculé automatiquement = coût / budget
         ("start_date", "Date début", "date", None),
         ("end_date", "Date fin", "date", None),
         ("nb_pieces", "Nb pièces", "float", None),
@@ -135,9 +137,13 @@ class CountryTab(ttk.Frame):
         ttk.Button(toolbar, text="+ Ajouter une activité", command=self._add_activity).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Modifier", command=self._edit_activity).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Supprimer", command=self._delete_activity).pack(side="left", padx=4)
+        ttk.Label(
+            toolbar, text="L'avancement (%) est calculé automatiquement = coût / budget",
+            foreground="#666",
+        ).pack(side="left", padx=16)
 
         columns = ("phase", "code", "task", "progress", "start", "end", "cost", "budget", "solde")
-        headers = ["Phase", "Code", "Tâche", "Avanc.", "Début", "Fin", "Coût", "Budget", "Solde"]
+        headers = ["Phase", "Code", "Tâche", "Avanc. (auto)", "Début", "Fin", "Coût", "Budget", "Solde"]
         self.activity_tree = ttk.Treeview(self.planning_frame, columns=columns, show="headings", height=10)
         for c, h in zip(columns, headers):
             self.activity_tree.heading(c, text=h)
@@ -153,9 +159,7 @@ class CountryTab(ttk.Frame):
 
     def _selected_activity_id(self):
         sel = self.activity_tree.selection()
-        if not sel:
-            return None
-        return int(sel[0])
+        return int(sel[0]) if sel else None
 
     def _add_activity(self):
         dlg = FormDialog(self, "Ajouter une activité", _activity_form_fields(self.conn))
@@ -257,9 +261,12 @@ class CountryTab(ttk.Frame):
             color = colors.get(r["category"], "#4C78A8")
             canvas.create_rectangle(x0, y + 3, x1, y + row_h - 3, fill=color, outline="")
 
+            # la barre de progression interne est plafonnée visuellement à 100%
+            # (l'avancement réel, affiché en texte ailleurs, peut dépasser 100%)
             progress = r["progress"] or 0
-            if progress > 0:
-                px = x0 + (x1 - x0) * progress
+            visual_progress = min(progress, 1.0)
+            if visual_progress > 0:
+                px = x0 + (x1 - x0) * visual_progress
                 canvas.create_rectangle(x0, y + row_h - 6, px, y + row_h - 3, fill="#1a3d5c", outline="")
 
         total_h = top_margin + len(dated) * row_h + 20
@@ -285,9 +292,7 @@ class CountryTab(ttk.Frame):
 
     def _selected_procurement_id(self):
         sel = self.procurement_tree.selection()
-        if not sel:
-            return None
-        return int(sel[0])
+        return int(sel[0]) if sel else None
 
     def _add_procurement(self):
         dlg = FormDialog(self, "Ajouter un achat", _procurement_form_fields(self.conn))

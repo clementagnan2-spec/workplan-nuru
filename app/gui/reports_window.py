@@ -47,7 +47,6 @@ class ReportsWindow(tk.Toplevel):
         self.dimension_var.set(DIM_CATEGORY)
         self.refresh()
 
-    # ------------------------------------------------------------- toolbar
     def _build_toolbar(self):
         bar = ttk.Frame(self, padding=8)
         bar.pack(fill="x")
@@ -56,8 +55,7 @@ class ReportsWindow(tk.Toplevel):
         self.country_var = tk.StringVar()
         countries = ["Tous les pays"] + [c["name"] for c in db.list_countries(self.conn)]
         self.country_combo = ttk.Combobox(
-            bar, textvariable=self.country_var, values=countries,
-            state="readonly", width=16,
+            bar, textvariable=self.country_var, values=countries, state="readonly", width=16,
         )
         self.country_combo.pack(side="left", padx=(0, 16))
         self.country_combo.bind("<<ComboboxSelected>>", self._on_country_change)
@@ -65,8 +63,7 @@ class ReportsWindow(tk.Toplevel):
         ttk.Label(bar, text="Répartir par :").pack(side="left", padx=(0, 4))
         self.dimension_var = tk.StringVar()
         self.dimension_combo = ttk.Combobox(
-            bar, textvariable=self.dimension_var, values=ALL_DIMENSIONS,
-            state="readonly", width=20,
+            bar, textvariable=self.dimension_var, values=ALL_DIMENSIONS, state="readonly", width=20,
         )
         self.dimension_combo.pack(side="left")
         self.dimension_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh())
@@ -78,8 +75,6 @@ class ReportsWindow(tk.Toplevel):
         self.refresh()
 
     def _update_dimension_options(self):
-        """Le choix « Pays » dans le 2e menu n'a de sens que si le 1er menu
-        vaut « Tous les pays » (sinon un seul pays est déjà sélectionné)."""
         if self.country_var.get() == "Tous les pays":
             options = ALL_DIMENSIONS
         else:
@@ -95,7 +90,6 @@ class ReportsWindow(tk.Toplevel):
         row = self.conn.execute("SELECT id FROM countries WHERE name = ?", (name,)).fetchone()
         return row["id"] if row else None
 
-    # --------------------------------------------------------------- table
     def _build_content(self):
         split = ttk.PanedWindow(self, orient="horizontal")
         split.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -122,7 +116,6 @@ class ReportsWindow(tk.Toplevel):
         vsb.pack(side="right", fill="y")
         self.tree.tag_configure("total", font=("Segoe UI", 9, "bold"))
 
-    # ------------------------------------------------------------- refresh
     def refresh(self):
         dimension = self.dimension_var.get()
         country_id = self._selected_country_id()
@@ -131,21 +124,20 @@ class ReportsWindow(tk.Toplevel):
             rows = db.breakdown_by_category(self.conn, country_id)
             self._fill_activity_style_table("Catégorie", rows)
             self.current_value_key = "pct_budget"
-
         elif dimension == DIM_COUNTRY:
             rows = db.breakdown_by_country(self.conn)
             self._fill_activity_style_table("Pays", rows)
             self.current_value_key = "pct_budget"
-
         elif dimension == DIM_DONOR:
             rows = db.breakdown_by_donor(self.conn, country_id)
             self._fill_donor_style_table(rows)
             self.current_value_key = "pct_budget"
-
         elif dimension == DIM_CHARGE_CODE:
             rows = db.breakdown_by_charge_code_pct(self.conn, country_id)
             self._fill_charge_code_style_table(rows)
             self.current_value_key = "pct_montant"
+        else:
+            rows = []
 
         self.current_rows = rows
         self._draw_chart()
@@ -184,7 +176,6 @@ class ReportsWindow(tk.Toplevel):
                 r["label"], _fmt_money(r["montant"]), f"{r['pct_montant']:.1f}%",
             ), tags=tags)
 
-    # --------------------------------------------------------------- chart
     def _draw_chart(self):
         canvas = self.canvas
         canvas.delete("all")
@@ -207,7 +198,6 @@ class ReportsWindow(tk.Toplevel):
         bar_w = min(60, chart_w / max(n, 1) * 0.55)
         gap = (chart_w - bar_w * n) / (n + 1) if n else 0
 
-        # grille + axe Y (0-100%)
         for pct in (0, 25, 50, 75, 100):
             y = margin_top + chart_h - (pct / 100) * chart_h
             canvas.create_line(margin_left, y, width - 10, y, fill="#e8e8e8")
@@ -222,11 +212,8 @@ class ReportsWindow(tk.Toplevel):
             color = BAR_COLORS[i % len(BAR_COLORS)]
             cap_h = min(10, bar_w / 2, max(bar_h, 1))
 
-            # corps du "cylindre"
             canvas.create_rectangle(x, y0 + cap_h / 2, x + bar_w, y1, fill=color, outline="")
-            # capuchon arrondi en haut (effet cylindrique)
             canvas.create_oval(x, y0, x + bar_w, y0 + cap_h, fill=color, outline="")
-            # base arrondie (effet cylindrique)
             canvas.create_oval(x, y1 - cap_h / 2, x + bar_w, y1 + cap_h / 2, fill=color, outline="")
 
             canvas.create_text(x + bar_w / 2, y0 - 10, text=f"{val:.1f}%", font=("Segoe UI", 8, "bold"))
@@ -234,16 +221,12 @@ class ReportsWindow(tk.Toplevel):
             label = str(item["label"])
             if len(label) > 18:
                 label = label[:17] + "…"
-            canvas.create_text(
-                x + bar_w / 2, y1 + 14, text=label, font=("Segoe UI", 7),
-                angle=35, anchor="e",
-            )
+            canvas.create_text(x + bar_w / 2, y1 + 14, text=label, font=("Segoe UI", 7), angle=35, anchor="e")
             x += bar_w + gap
 
         canvas.create_line(margin_left, margin_top, margin_left, margin_top + chart_h, fill="#bbb")
         canvas.create_line(margin_left, margin_top + chart_h, width - 10, margin_top + chart_h, fill="#bbb")
 
-    # -------------------------------------------------------------- export
     def _export_report(self):
         if self.tree is None or not self.tree.get_children():
             show_info(self, "Rapport vide", "Aucune donnée à exporter pour ce rapport.")

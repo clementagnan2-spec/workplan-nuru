@@ -1,7 +1,6 @@
 """Fenêtre "Référentiels" : gérer les listes de valeurs utilisées dans les
 formulaires (codes d'activité, catégories, lignes budgétaires/bailleurs,
-codes de charge). Ces listes alimentent ensuite les menus déroulants des
-formulaires d'activité et d'achat."""
+codes de charge)."""
 
 import tkinter as tk
 from tkinter import ttk

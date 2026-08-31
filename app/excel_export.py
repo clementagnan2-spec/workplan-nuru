@@ -1,8 +1,4 @@
-"""
-Export de la base de données de l'application vers un classeur Excel
-(.xlsx) lisible : un onglet "Consolidation", puis pour chaque pays un
-onglet "Planning <PAYS>" et un onglet "Achats <PAYS>".
-"""
+"""Export de la base de données de l'application vers un classeur Excel."""
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment

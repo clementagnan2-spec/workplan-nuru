@@ -1,4 +1,5 @@
-"""Fenêtre principale : menu, onglet Consolidation + un onglet par pays."""
+"""Fenêtre principale : menu, onglet Consolidation (avec boutons Importer /
+Télécharger le modèle) + un onglet par pays."""
 
 import os
 import threading
@@ -9,6 +10,7 @@ from .. import database as db
 from .. import excel_import
 from .. import excel_export
 from .. import sample_data
+from .. import template_generator
 from .country_tab import CountryTab
 from .reports_window import ReportsWindow
 from .referentials_window import ReferentialsWindow
@@ -57,6 +59,7 @@ class AppWindow(tk.Tk):
 
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Importer un classeur Excel...", command=self._import_excel)
+        file_menu.add_command(label="Télécharger le modèle (.xlsx)...", command=self._download_template)
         file_menu.add_command(label="Exporter vers Excel...", command=self._export_excel)
         file_menu.add_separator()
         file_menu.add_command(label="Charger des données d'exemple", command=self._load_sample_data)
@@ -89,6 +92,16 @@ class AppWindow(tk.Tk):
             font=("Segoe UI", 14, "bold"),
         ).pack(anchor="w", padx=12, pady=(12, 4))
 
+        # --- boutons d'import / modèle, bien visibles ---
+        actions = ttk.Frame(self.consolidation_frame)
+        actions.pack(anchor="w", padx=12, pady=(0, 8))
+        ttk.Button(
+            actions, text="📥 Importer un classeur Excel...", command=self._import_excel,
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            actions, text="📄 Télécharger le modèle (.xlsx)", command=self._download_template,
+        ).pack(side="left")
+
         columns = ("country", "cost", "budget", "solde")
         headers = ["Pays", "Coût total", "Budget total", "Solde"]
         self.consolidation_tree = ttk.Treeview(
@@ -101,9 +114,11 @@ class AppWindow(tk.Tk):
 
         ttk.Label(
             self.consolidation_frame,
-            text="Utilisez le menu Fichier > Importer un classeur Excel pour charger vos données\n"
-                 "à partir d'un fichier WORKPLAN_MULTIPAYS (.xlsx), ou ajoutez des activités\n"
-                 "directement dans l'onglet de chaque pays.",
+            text="1) Téléchargez le modèle si vous n'avez pas encore de fichier, remplissez-le, "
+                 "puis importez-le.\n"
+                 "2) Ou ajoutez des activités directement dans l'onglet de chaque pays.\n"
+                 "L'avancement (%) des activités est calculé automatiquement (coût / budget) — "
+                 "il n'est jamais saisi manuellement.",
             foreground="#666",
             justify="left",
         ).pack(anchor="w", padx=12, pady=8)
@@ -164,6 +179,26 @@ class AppWindow(tk.Tk):
     def _set_status_threadsafe(self, text):
         self.after(0, lambda: self.status_var.set(text))
 
+    def _download_template(self):
+        path = filedialog.asksaveasfilename(
+            title="Télécharger le modèle Excel",
+            defaultextension=".xlsx",
+            filetypes=[("Classeur Excel", "*.xlsx")],
+            initialfile="WORKPLAN_MULTIPAYS_MODELE.xlsx",
+        )
+        if not path:
+            return
+        try:
+            template_generator.generate_template(path)
+        except Exception as exc:  # noqa: BLE001
+            show_error(self, "Erreur", str(exc))
+            return
+        show_info(
+            self, "Modèle téléchargé",
+            f"Le modèle a été enregistré :\n{path}\n\n"
+            "Remplissez-le puis utilisez Fichier > Importer un classeur Excel.",
+        )
+
     def _export_excel(self):
         path = filedialog.asksaveasfilename(
             title="Exporter vers un classeur Excel",
@@ -188,7 +223,6 @@ class AppWindow(tk.Tk):
             "Voulez-vous d'abord effacer les données existantes de ces pays ?\n\n"
             "Oui = remplacer • Non = ajouter en plus des données actuelles",
         )
-
         try:
             summary = sample_data.load_sample_data(self.conn, clear_existing=clear)
         except Exception as exc:  # noqa: BLE001

@@ -5,17 +5,6 @@ from tkinter import ttk
 
 
 class FormDialog(tk.Toplevel):
-    """
-    Fenêtre modale générique construisant un formulaire à partir d'une
-    liste de champs. `fields` est une liste de tuples :
-        (clé, libellé, type, options)
-    où type ∈ {"text", "float", "percent", "date", "choice", "multiline"}
-    et options est la liste de choix pour le type "choice" (sinon None).
-
-    Après fermeture, `self.result` contient soit None (annulé) soit un
-    dict {clé: valeur}.
-    """
-
     def __init__(self, parent, title, fields, initial: dict = None):
         super().__init__(parent)
         self.title(title)
@@ -46,9 +35,6 @@ class FormDialog(tk.Toplevel):
 
             if ftype == "choice":
                 var = tk.StringVar(value=str(value) if value is not None else "")
-                # éditable : l'utilisateur peut choisir dans la liste OU taper une
-                # nouvelle valeur (les référentiels s'enrichissent depuis le menu
-                # "Référentiels", mais on ne bloque pas la saisie ici pour autant)
                 widget = ttk.Combobox(inner, textvariable=var, values=options, width=32, state="normal")
             elif ftype == "multiline":
                 widget = tk.Text(inner, width=34, height=3)

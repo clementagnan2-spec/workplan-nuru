@@ -3,7 +3,8 @@ Données d'exemple pour découvrir Nuru Workplan Manager sans avoir à
 importer un fichier Excel. Utilisable via le menu Fichier > Charger des
 données d'exemple.
 
-Les montants et dates sont fictifs, à but uniquement démonstratif.
+L'avancement n'est pas défini ici : il est recalculé automatiquement par
+database.add_activity() comme (coût total / budget total).
 """
 
 import datetime
@@ -17,41 +18,40 @@ def _d(offset_days: int) -> str:
     return (TODAY + datetime.timedelta(days=offset_days)).isoformat()
 
 
-# Structure par pays : phases -> liste d'activités
 SAMPLE_PLAN = {
     "TOGO": [
         ("Phase 1 - Terrain", [
             dict(code="A1XX", task="Activités agricoles et parcelle de démonstration",
-                 assigned_to="Équipe terrain", progress=0.65, start=_d(-10), end=_d(5),
+                 assigned_to="Équipe terrain", start=_d(-10), end=_d(5),
                  nb_pieces=2, category="P",
                  cost_ni_hct=74100, cost_tifr_usaid=114000, cost_ftit=0,
                  budget_ni_hct=100000, budget_tifr_usaid=200000, budget_ftit=500000),
             dict(code="A2XX", task="Formation des coopératives",
-                 assigned_to="Chef de projet", progress=0.40, start=_d(-5), end=_d(40),
+                 assigned_to="Chef de projet", start=_d(-5), end=_d(40),
                  nb_pieces=2, category="P",
                  cost_ni_hct=74100, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=10000, budget_tifr_usaid=11000000, budget_ftit=0),
             dict(code="A3XX", task="Service numérique et climatique (IGNITIA)",
-                 assigned_to="Coordination", progress=0.15, start=_d(2), end=_d(12),
+                 assigned_to="Coordination", start=_d(2), end=_d(12),
                  nb_pieces=1, category="I",
                  cost_ni_hct=0, cost_tifr_usaid=250000, cost_ftit=0,
                  budget_ni_hct=5000, budget_tifr_usaid=0, budget_ftit=1500000),
         ]),
         ("Phase 2 - Admin", [
             dict(code="A6XX", task="Frais administratifs et audit",
-                 assigned_to="Administration", progress=0.30, start=_d(-15), end=_d(180),
+                 assigned_to="Administration", start=_d(-15), end=_d(180),
                  nb_pieces=None, category="A",
                  cost_ni_hct=12000000, cost_tifr_usaid=0, cost_ftit=3000000,
                  budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=30000000),
             dict(code="A7XX", task="Salaires",
-                 assigned_to="RH", progress=0.50, start=_d(0), end=_d(6),
+                 assigned_to="RH", start=_d(0), end=_d(6),
                  nb_pieces=None, category="A",
                  cost_ni_hct=74100, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=0),
         ]),
         ("Phase 3 - Missions", [
             dict(code="A11XX", task="Missions de suivi",
-                 assigned_to="Superviseur", progress=0.0, start=_d(6), end=_d(11),
+                 assigned_to="Superviseur", start=_d(6), end=_d(11),
                  nb_pieces=None, category="A",
                  cost_ni_hct=0, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=0),
@@ -60,40 +60,40 @@ SAMPLE_PLAN = {
     "BENIN": [
         ("Phase 1 - Terrain", [
             dict(code="A1XX", task="Distribution d'intrants agricoles",
-                 assigned_to="Équipe terrain", progress=0.55, start=_d(-8), end=_d(7),
+                 assigned_to="Équipe terrain", start=_d(-8), end=_d(7),
                  nb_pieces=3, category="P",
                  cost_ni_hct=50000, cost_tifr_usaid=90000, cost_ftit=0,
                  budget_ni_hct=80000, budget_tifr_usaid=180000, budget_ftit=400000),
             dict(code="A2XX", task="Sensibilisation communautaire",
-                 assigned_to="Chargé de sensibilisation", progress=0.70, start=_d(-3), end=_d(20),
+                 assigned_to="Chargé de sensibilisation", start=_d(-3), end=_d(20),
                  nb_pieces=1, category="I",
                  cost_ni_hct=20000, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=25000, budget_tifr_usaid=0, budget_ftit=0),
         ]),
         ("Phase 2 - Admin", [
             dict(code="A6XX", task="Audit financier annuel",
-                 assigned_to="Administration", progress=0.10, start=_d(10), end=_d(40),
+                 assigned_to="Administration", start=_d(10), end=_d(40),
                  nb_pieces=None, category="A",
                  cost_ni_hct=0, cost_tifr_usaid=0, cost_ftit=2500000,
-                 budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=5000000),
+                 budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=5400000),
         ]),
     ],
     "NIGER": [
         ("Phase 1 - Terrain", [
             dict(code="A1XX", task="Forage et point d'eau",
-                 assigned_to="Équipe technique", progress=0.25, start=_d(0), end=_d(30),
+                 assigned_to="Équipe technique", start=_d(0), end=_d(30),
                  nb_pieces=1, category="P",
                  cost_ni_hct=300000, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=600000, budget_tifr_usaid=0, budget_ftit=0),
             dict(code="A2XX", task="Formation des relais communautaires",
-                 assigned_to="Chef de projet", progress=0.60, start=_d(-20), end=_d(-2),
+                 assigned_to="Chef de projet", start=_d(-20), end=_d(-2),
                  nb_pieces=2, category="P",
                  cost_ni_hct=45000, cost_tifr_usaid=60000, cost_ftit=0,
                  budget_ni_hct=50000, budget_tifr_usaid=70000, budget_ftit=0),
         ]),
         ("Phase 4 - Collecte", [
             dict(code="A16XX", task="Collecte de fonds locale",
-                 assigned_to="Fundraising", progress=0.05, start=_d(15), end=_d(60),
+                 assigned_to="Fundraising", start=_d(15), end=_d(60),
                  nb_pieces=None, category="C",
                  cost_ni_hct=0, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=0),
@@ -102,14 +102,14 @@ SAMPLE_PLAN = {
     "GHANA": [
         ("Phase 1 - Terrain", [
             dict(code="A1XX", task="Mise en place de parcelles pilotes",
-                 assigned_to="Équipe agronomie", progress=0.80, start=_d(-25), end=_d(-1),
+                 assigned_to="Équipe agronomie", start=_d(-25), end=_d(-1),
                  nb_pieces=4, category="P",
                  cost_ni_hct=120000, cost_tifr_usaid=200000, cost_ftit=0,
                  budget_ni_hct=150000, budget_tifr_usaid=250000, budget_ftit=0),
         ]),
         ("Phase 3 - Missions", [
             dict(code="A12XX", task="Mission d'évaluation à mi-parcours",
-                 assigned_to="Coordination régionale", progress=0.0, start=_d(20), end=_d(25),
+                 assigned_to="Coordination régionale", start=_d(20), end=_d(25),
                  nb_pieces=None, category="A",
                  cost_ni_hct=0, cost_tifr_usaid=0, cost_ftit=0,
                  budget_ni_hct=0, budget_tifr_usaid=0, budget_ftit=0),
@@ -160,8 +160,6 @@ SAMPLE_PROCUREMENT = {
 
 
 def load_sample_data(conn, clear_existing: bool = False) -> dict:
-    """Insère des données d'exemple pour les 4 pays. Si `clear_existing`
-    est vrai, supprime d'abord les activités/achats existants de ces pays."""
     summary = {}
 
     for country_name, phases in SAMPLE_PLAN.items():
@@ -182,7 +180,6 @@ def load_sample_data(conn, clear_existing: bool = False) -> dict:
                     "code": a["code"],
                     "task": a["task"],
                     "assigned_to": a["assigned_to"],
-                    "progress": a["progress"],
                     "start_date": a["start"],
                     "end_date": a["end"],
                     "nb_pieces": a["nb_pieces"],
