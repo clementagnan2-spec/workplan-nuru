@@ -66,20 +66,22 @@ def _export_country_planning(wb, conn, country):
                "Début", "Fin", "Nb pièces", "Catégorie",
                "Coût NI/HCT", "Coût TIFR-USAID", "Coût FTIT", "Coût total",
                "Budget NI/HCT", "Budget TIFR-USAID", "Budget FTIT", "Budget total",
-               "Solde", "Commentaire"]
+               "Solde", "Non livré", "Solde global", "Commentaire"]
     _write_header(ws, 1, headers)
 
     row = 2
     for a in db.list_activities(conn, country["id"]):
         cost_total = a["cost_ni_hct"] + a["cost_tifr_usaid"] + a["cost_ftit"]
         budget_total = a["budget_ni_hct"] + a["budget_tifr_usaid"] + a["budget_ftit"]
+        solde = budget_total - cost_total
+        non_livre = a["non_delivered"] or 0
         values = [
             a["phase_name"], a["code"], a["task"], a["assigned_to"],
             round((a["progress"] or 0) * 100, 1), a["start_date"], a["end_date"],
             a["nb_pieces"], a["category"],
             a["cost_ni_hct"], a["cost_tifr_usaid"], a["cost_ftit"], cost_total,
             a["budget_ni_hct"], a["budget_tifr_usaid"], a["budget_ftit"], budget_total,
-            budget_total - cost_total, a["comment"],
+            solde, non_livre, solde - non_livre, a["comment"],
         ]
         for col, v in enumerate(values, start=1):
             ws.cell(row=row, column=col, value=v)

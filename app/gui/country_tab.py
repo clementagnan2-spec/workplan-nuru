@@ -142,8 +142,10 @@ class CountryTab(ttk.Frame):
             foreground="#666",
         ).pack(side="left", padx=16)
 
-        columns = ("phase", "code", "task", "progress", "start", "end", "cost", "budget", "solde")
-        headers = ["Phase", "Code", "Tâche", "Avanc. (auto)", "Début", "Fin", "Coût", "Budget", "Solde"]
+        columns = ("phase", "code", "task", "progress", "start", "end", "cost", "budget",
+                   "solde", "non_livre", "solde_global")
+        headers = ["Phase", "Code", "Tâche", "Avanc. (auto)", "Début", "Fin", "Coût", "Budget",
+                   "Solde", "Non livré", "Solde global"]
         self.activity_tree = ttk.Treeview(self.planning_frame, columns=columns, show="headings", height=10)
         for c, h in zip(columns, headers):
             self.activity_tree.heading(c, text=h)
@@ -218,12 +220,15 @@ class CountryTab(ttk.Frame):
         for r in rows:
             cost_total = r["cost_ni_hct"] + r["cost_tifr_usaid"] + r["cost_ftit"]
             budget_total = r["budget_ni_hct"] + r["budget_tifr_usaid"] + r["budget_ftit"]
+            solde = budget_total - cost_total
+            non_livre = r["non_delivered"] or 0
+            solde_global = solde - non_livre
             self.activity_tree.insert("", "end", iid=str(r["id"]), values=(
                 r["phase_name"] or "", r["code"] or "", r["task"],
                 f"{round((r['progress'] or 0) * 100)}%",
                 r["start_date"] or "", r["end_date"] or "",
                 _fmt_money(cost_total), _fmt_money(budget_total),
-                _fmt_money(budget_total - cost_total),
+                _fmt_money(solde), _fmt_money(non_livre), _fmt_money(solde_global),
             ))
         self._draw_gantt(rows)
 

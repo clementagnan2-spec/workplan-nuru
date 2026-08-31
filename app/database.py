@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS activities (
     budget_ni_hct       REAL DEFAULT 0,
     budget_tifr_usaid   REAL DEFAULT 0,
     budget_ftit         REAL DEFAULT 0,
+    non_delivered       REAL DEFAULT 0,        -- calculé automatiquement = achats engagés (PR/BC) non encore livrés
     comment             TEXT
 );
 
@@ -137,10 +138,20 @@ def connect(db_path: str = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)
+    _migrate_schema(conn)
     _seed_countries(conn)
     _seed_referentials(conn)
     conn.commit()
     return conn
+
+
+def _migrate_schema(conn: sqlite3.Connection):
+    """Ajoute les colonnes créées après la première version de la base,
+    pour les bases existantes déjà sur le poste de l'utilisateur."""
+    try:
+        conn.execute("ALTER TABLE activities ADD COLUMN non_delivered REAL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # colonne déjà présente
 
 
 def _seed_countries(conn: sqlite3.Connection):
@@ -308,11 +319,21 @@ def _is_delivered(statut_bc) -> bool:
     return s in ("livré", "livre", "livrée", "livree")
 
 
+def _is_cancelled(statut_bc) -> bool:
+    if not statut_bc:
+        return False
+    s = str(statut_bc).strip().lower()
+    return s in ("annulé", "annule", "annulée", "annulee")
+
+
 def recompute_costs_from_procurements(conn, country_id: int) -> dict:
-    """Recalcule le coût (par bailleur) de chaque activité du pays comme la
-    somme des achats « Livré » dont le code correspond, puis recalcule
-    l'avancement. Renvoie les achats livrés qui n'ont pas pu être ventilés
-    (code d'activité introuvable, ou bailleur non reconnu) pour alerte."""
+    """Recalcule, pour chaque activité du pays :
+    - le coût (par bailleur) = somme des achats « Livré » dont le code correspond,
+    - les engagements non livrés (non_delivered) = somme des achats liés qui ne
+      sont ni « Livré » ni « Annulé » (donc encore en cours/en attente),
+    - l'avancement (coût / budget).
+    Renvoie les achats livrés qui n'ont pas pu être ventilés (code d'activité
+    introuvable, ou bailleur non reconnu) pour alerte."""
     activities = list_activities(conn, country_id)
     by_code = {}
     for a in activities:
@@ -321,23 +342,30 @@ def recompute_costs_from_procurements(conn, country_id: int) -> dict:
             by_code.setdefault(code, []).append(a["id"])
 
     sums = {a["id"]: {"cost_ni_hct": 0.0, "cost_tifr_usaid": 0.0, "cost_ftit": 0.0} for a in activities}
+    non_delivered = {a["id"]: 0.0 for a in activities}
 
     unmatched_code = []
     unmatched_donor = []
 
     for p in list_procurements(conn, country_id):
-        if not _is_delivered(p["statut_bc"]):
-            continue
         code = (p["dossier_workplan"] or p["code"] or "").strip().upper()
-        if not code or code not in by_code:
-            unmatched_code.append(p)
-            continue
-        col = _donor_column(p["project"])
-        if not col:
-            unmatched_donor.append(p)
-            continue
-        for act_id in by_code[code]:
-            sums[act_id][col] += (p["montant"] or 0.0)
+        matched_ids = by_code.get(code) if code else None
+
+        if _is_delivered(p["statut_bc"]):
+            if not matched_ids:
+                unmatched_code.append(p)
+                continue
+            col = _donor_column(p["project"])
+            if not col:
+                unmatched_donor.append(p)
+                continue
+            for act_id in matched_ids:
+                sums[act_id][col] += (p["montant"] or 0.0)
+        elif not _is_cancelled(p["statut_bc"]):
+            # engagement pas encore livré (En cours, En attente, ...)
+            if matched_ids:
+                for act_id in matched_ids:
+                    non_delivered[act_id] += (p["montant"] or 0.0)
 
     for act_id, cost_dict in sums.items():
         existing = get_activity(conn, act_id)
@@ -347,8 +375,10 @@ def recompute_costs_from_procurements(conn, country_id: int) -> dict:
         data["budget_ftit"] = existing["budget_ftit"]
         progress = _compute_progress(data)
         conn.execute(
-            "UPDATE activities SET cost_ni_hct=?, cost_tifr_usaid=?, cost_ftit=?, progress=? WHERE id=?",
-            (cost_dict["cost_ni_hct"], cost_dict["cost_tifr_usaid"], cost_dict["cost_ftit"], progress, act_id),
+            "UPDATE activities SET cost_ni_hct=?, cost_tifr_usaid=?, cost_ftit=?, "
+            "non_delivered=?, progress=? WHERE id=?",
+            (cost_dict["cost_ni_hct"], cost_dict["cost_tifr_usaid"], cost_dict["cost_ftit"],
+             non_delivered[act_id], progress, act_id),
         )
     conn.commit()
 
